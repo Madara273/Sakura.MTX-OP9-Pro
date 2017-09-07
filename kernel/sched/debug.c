@@ -47,8 +47,13 @@ static unsigned long nsec_low(unsigned long long nsec)
 
 __read_mostly bool sched_debug_enabled;
 
+__read_mostly bool sched_debug_enabled;
+
 static __init int sched_init_debug(void)
 {
+	debugfs_create_bool("sched_debug", 0644, NULL,
+			&sched_debug_enabled);
+
 	debugfs_create_bool("sched_debug", 0644, NULL,
 			&sched_debug_enabled);
 
