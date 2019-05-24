@@ -22,7 +22,7 @@
 11	32	execv			sunos_execv
 11	64	execv			sys_nis_syscall
 12	common	chdir			sys_chdir
-13	32    	chown			sys_chown16
+13	32	chown			sys_chown16
 13	64	chown			sys_chown
 14	common	mknod			sys_mknod
 15	common	chmod			sys_chmod
@@ -34,23 +34,23 @@
 20	common	getpid			sys_getpid
 21	common	capget			sys_capget
 22	common	capset			sys_capset
-23	32    	setuid			sys_setuid16
-23	64    	setuid			sys_setuid
+23	32	setuid			sys_setuid16
+23	64	setuid			sys_setuid
 24	32	getuid			sys_getuid16
-24	64   	getuid			sys_getuid
+24	64	getuid			sys_getuid
 25	common	vmsplice		sys_vmsplice			compat_sys_vmsplice
 26	common	ptrace			sys_ptrace			compat_sys_ptrace
 27	common	alarm			sys_alarm
 28	common	sigaltstack		sys_sigaltstack			compat_sys_sigaltstack
-29	32    	pause			sys_pause
-29	64    	pause			sys_nis_syscall
+29	32	pause			sys_pause
+29	64	pause			sys_nis_syscall
 30	32	utime			sys_utime32
 30	64	utime			sys_utime
-31	32    	lchown32		sys_lchown
-32	32    	fchown32		sys_fchown
+31	32	lchown32		sys_lchown
+32	32	fchown32		sys_fchown
 33	common	access			sys_access
 34	common	nice			sys_nice
-35	32    	chown32			sys_chown
+35	32	chown32			sys_chown
 36	common	sync			sys_sync
 37	common	kill			sys_kill
 38	common	stat			sys_newstat			compat_sys_newstat
@@ -60,7 +60,7 @@
 41	common	dup			sys_dup
 42	common	pipe			sys_sparc_pipe
 43	common	times			sys_times			compat_sys_times
-44	32    	getuid32		sys_getuid
+44	32	getuid32		sys_getuid
 45	common	umount2			sys_umount
 46	32	setgid			sys_setgid16
 46	64	setgid			sys_setgid
@@ -76,7 +76,7 @@
 53	32	getgid32		sys_getgid
 54	common	ioctl			sys_ioctl			compat_sys_ioctl
 55	common	reboot			sys_reboot
-56	32    	mmap2			sys_mmap2			sys32_mmap2
+56	32	mmap2			sys_mmap2			sys32_mmap2
 57	common	symlink			sys_symlink
 58	common	readlink		sys_readlink
 59	32	execve			sys_execve			sys32_execve
@@ -90,7 +90,7 @@
 66	common	vfork			sys_vfork
 67	common	pread64			sys_pread64			compat_sys_pread64
 68	common	pwrite64		sys_pwrite64			compat_sys_pwrite64
-69	32    	geteuid32		sys_geteuid
+69	32	geteuid32		sys_geteuid
 70	32	getegid32		sys_getegid
 71	common	mmap			sys_mmap
 72	32	setreuid32		sys_setreuid
@@ -481,7 +481,7 @@
 433	common	fspick				sys_fspick
 434	common	pidfd_open			sys_pidfd_open
 # 435 reserved for clone3
-# 436 reserved for close_range
+436	common  close_range			sys_close_range
 # 437 reserved for openat2
 438	common	 pidfd_getfd			sys_pidfd_getfd
 # 439 reserved for faccessat2
