@@ -1661,6 +1661,7 @@ int __init br_netlink_init(void)
 	int err;
 
 	br_mdb_init();
+	br_vlan_rtnl_init();
 	rtnl_af_register(&br_af_ops);
 
 	err = rtnl_link_register(&br_link_ops);
@@ -1678,6 +1679,7 @@ out_af:
 void br_netlink_fini(void)
 {
 	br_mdb_uninit();
+	br_vlan_rtnl_uninit();
 	rtnl_af_unregister(&br_af_ops);
 	rtnl_link_unregister(&br_link_ops);
 }
