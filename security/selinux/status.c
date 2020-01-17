@@ -11,7 +11,7 @@
 #include <linux/mm.h>
 #include <linux/mutex.h>
 #include "avc.h"
-#include "services.h"
+#include "security.h"
 
 #ifdef CONFIG_KSU_SUSFS
 extern bool susfs_is_current_ksu_domain(void);
@@ -48,12 +48,12 @@ struct page *selinux_kernel_status_page(struct selinux_state *state)
 	struct selinux_kernel_status   *status;
 	struct page		       *result = NULL;
 
-	mutex_lock(&state->ss->status_lock);
-	if (!state->ss->status_page) {
-		state->ss->status_page = alloc_page(GFP_KERNEL|__GFP_ZERO);
+	mutex_lock(&state->status_lock);
+	if (!state->status_page) {
+		state->status_page = alloc_page(GFP_KERNEL|__GFP_ZERO);
 
-		if (state->ss->status_page) {
-			status = page_address(state->ss->status_page);
+		if (state->status_page) {
+			status = page_address(state->status_page);
 
 			status->version = SELINUX_KERNEL_STATUS_VERSION;
 			status->sequence = 0;
@@ -69,8 +69,8 @@ struct page *selinux_kernel_status_page(struct selinux_state *state)
 				!security_get_allow_unknown(state);
 		}
 	}
-	result = state->ss->status_page;
-	mutex_unlock(&state->ss->status_lock);
+	result = state->status_page;
+	mutex_unlock(&state->status_lock);
 
 	return result;
 }
@@ -85,9 +85,9 @@ void selinux_status_update_setenforce(struct selinux_state *state,
 {
 	struct selinux_kernel_status   *status;
 
-	mutex_lock(&state->ss->status_lock);
-	if (state->ss->status_page) {
-		status = page_address(state->ss->status_page);
+	mutex_lock(&state->status_lock);
+	if (state->status_page) {
+		status = page_address(state->status_page);
 
 #ifdef CONFIG_KSU_SUSFS
 		if (susfs_is_current_ksu_domain()) {
@@ -106,7 +106,7 @@ void selinux_status_update_setenforce(struct selinux_state *state,
 		smp_wmb();
 		status->sequence++;
 	}
-	mutex_unlock(&state->ss->status_lock);
+	mutex_unlock(&state->status_lock);
 }
 
 /*
@@ -120,9 +120,9 @@ void selinux_status_update_policyload(struct selinux_state *state,
 {
 	struct selinux_kernel_status   *status;
 
-	mutex_lock(&state->ss->status_lock);
-	if (state->ss->status_page) {
-		status = page_address(state->ss->status_page);
+	mutex_lock(&state->status_lock);
+	if (state->status_page) {
+		status = page_address(state->status_page);
 
 #ifdef CONFIG_KSU_SUSFS
 		if (susfs_is_current_ksu_domain()) {
@@ -144,5 +144,5 @@ void selinux_status_update_policyload(struct selinux_state *state,
 		smp_wmb();
 		status->sequence++;
 	}
-	mutex_unlock(&state->ss->status_lock);
+	mutex_unlock(&state->status_lock);
 }
