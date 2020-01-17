@@ -108,7 +108,9 @@
 struct selinux_state selinux_state __rticdata;
 #else
 struct selinux_state selinux_state;
+
 #endif
+
 
 /* SECMARK reference count */
 static atomic_t selinux_secmark_refcount = ATOMIC_INIT(0);
@@ -3370,6 +3372,7 @@ static void selinux_inode_post_setxattr(struct dentry *dentry, const char *name,
 	return;
 }
 
+
 static int selinux_inode_getxattr(struct dentry *dentry, const char *name)
 {
 	const struct cred *cred = current_cred();
@@ -6626,6 +6629,7 @@ abort_change:
 	return error;
 }
 
+
 static int selinux_ismaclabel(const char *name)
 {
 	return (strcmp(name, XATTR_SELINUX_SUFFIX) == 0);
@@ -7173,7 +7177,6 @@ static struct security_hook_list selinux_hooks[] __lsm_ro_after_init = {
 
 	LSM_HOOK_INIT(getprocattr, selinux_getprocattr),
 	LSM_HOOK_INIT(setprocattr, selinux_setprocattr),
-
 	LSM_HOOK_INIT(ismaclabel, selinux_ismaclabel),
 	LSM_HOOK_INIT(secctx_to_secid, selinux_secctx_to_secid),
 	LSM_HOOK_INIT(release_secctx, selinux_release_secctx),
@@ -7323,6 +7326,7 @@ static __init int selinux_init(void)
 	selinux_state.checkreqprot = selinux_checkreqprot_boot;
 	selinux_ss_init(&selinux_state.ss);
 	selinux_avc_init(&selinux_state.avc);
+	mutex_init(&selinux_state.status_lock);
 
 	/* Set the security state for the initial task. */
 	cred_init_security();

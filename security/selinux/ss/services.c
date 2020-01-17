@@ -46,7 +46,6 @@
 #include <linux/in.h>
 #include <linux/sched.h>
 #include <linux/audit.h>
-#include <linux/mutex.h>
 #include <linux/vmalloc.h>
 #include <net/netlabel.h>
 
@@ -72,7 +71,6 @@ static struct selinux_ss selinux_ss;
 void selinux_ss_init(struct selinux_ss **ss)
 {
 	rwlock_init(&selinux_ss.policy_rwlock);
-	mutex_init(&selinux_ss.status_lock);
 	*ss = &selinux_ss;
 }
 
@@ -1974,6 +1972,7 @@ static inline int convert_context_handle_invalid_context(
 	return 0;
 }
 
+
 struct convert_context_args {
 	struct selinux_state *state;
 	struct policydb *oldp;
@@ -3826,3 +3825,4 @@ int security_read_policy(struct selinux_state *state,
 	return 0;
 
 }
+
