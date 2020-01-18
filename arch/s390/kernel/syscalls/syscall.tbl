@@ -401,7 +401,7 @@
 395  common	shmget			sys_shmget			sys_shmget
 396  common	shmctl			sys_shmctl			compat_sys_shmctl
 397  common	shmat			sys_shmat			compat_sys_shmat
-398  common	shmdt			sys_shmdt 			sys_shmdt
+398  common	shmdt			sys_shmdt			sys_shmdt
 399  common	msgget			sys_msgget			sys_msgget
 400  common	msgsnd			sys_msgsnd			compat_sys_msgsnd
 401  common	msgrcv			sys_msgrcv			compat_sys_msgrcv
@@ -438,8 +438,8 @@
 433  common	fspick			sys_fspick			sys_fspick
 434  common	pidfd_open		sys_pidfd_open			sys_pidfd_open
 435  common	clone3			sys_clone3			sys_clone3
-436 common	close_range		sys_close_range			sys_close_range
-# 437 reserved for openat2
+436  common	close_range		sys_close_range			sys_close_range
+437  common	openat2			sys_openat2			sys_openat2
 438  common     pidfd_getfd             sys_pidfd_getfd                 sys_pidfd_getfd
 # 439 reserved for faccessat2
 440  common	process_madvise		sys_process_madvise		sys_process_madvise
