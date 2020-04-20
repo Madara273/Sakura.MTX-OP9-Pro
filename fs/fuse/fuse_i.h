@@ -398,6 +398,9 @@ struct fuse_req {
 
 	/** When (in jiffies) the request was created */
 	unsigned long create_time;
+
+	/** fuse_conn this request belongs to */
+	struct fuse_conn *fc;
 };
 
 struct fuse_iqueue;
