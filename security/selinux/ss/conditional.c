@@ -731,21 +731,14 @@ static int duplicate_policydb_bools(struct policydb *newdb,
 	if (!cond_bool_array)
 		return -ENOMEM;
 
-	newdb->p_bools.table = kmalloc(sizeof(*newdb->p_bools.table), GFP_KERNEL);
-	if (!newdb->p_bools.table) {
-		kfree(cond_bool_array);
-		return -ENOMEM;
-	}
-
-	rc = hashtab_duplicate(newdb->p_bools.table, orig->p_bools.table,
+	rc = hashtab_duplicate(&newdb->p_bools.table, &orig->p_bools.table,
 			cond_bools_copy, cond_bools_destroy, NULL);
 	if (rc) {
-		kfree(newdb->p_bools.table);
 		kfree(cond_bool_array);
 		return -ENOMEM;
 	}
 
-	hashtab_map(newdb->p_bools.table, cond_bools_index, cond_bool_array);
+	hashtab_map(&newdb->p_bools.table, cond_bools_index, cond_bool_array);
 	newdb->bool_val_to_struct = cond_bool_array;
 
 	newdb->p_bools.nprim = orig->p_bools.nprim;
@@ -755,8 +748,8 @@ static int duplicate_policydb_bools(struct policydb *newdb,
 
 void cond_policydb_destroy_dup(struct policydb *p)
 {
-	hashtab_map(p->p_bools.table, cond_bools_destroy, NULL);
-	hashtab_destroy(p->p_bools.table);
+	hashtab_map(&p->p_bools.table, cond_bools_destroy, NULL);
+	hashtab_destroy(&p->p_bools.table);
 	cond_policydb_destroy(p);
 }
 
