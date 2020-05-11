@@ -9,13 +9,13 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/thermal.h>
-#include <linux/slab.h>
-#include <linux/types.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
 #include <linux/err.h>
 #include <linux/export.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/slab.h>
+#include <linux/thermal.h>
+#include <linux/types.h>
 #include <linux/string.h>
 #include <linux/list.h>
 
