@@ -306,7 +306,7 @@ int __scm_install_fd(struct file *file, int __user *ufd, unsigned int o_flags)
 	/* Bump the sock usage counts, if any. */
 	__receive_sock(file);
 	fd_install(new_fd, get_file(file));
-	return error;
+	return 0;
 }
 
 static int scm_max_fds(struct msghdr *msg)
