@@ -443,6 +443,6 @@
 436	i386	close_range		sys_close_range
 437	i386	openat2			sys_openat2			__ia32_sys_openat2
 438	i386	pidfd_getfd		sys_pidfd_getfd
-# 439 reserved for faccessat2
+439     i386    faccessat2              sys_faccessat2
 440	i386	process_madvise		sys_process_madvise
 441	i386	epoll_pwait2		sys_epoll_pwait2		compat_sys_epoll_pwait2
