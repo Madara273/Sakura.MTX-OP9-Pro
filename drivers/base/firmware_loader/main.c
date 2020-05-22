@@ -212,7 +212,7 @@ static struct fw_priv *__lookup_fw_priv(const char *fw_name)
 static int alloc_lookup_fw_priv(const char *fw_name,
 				struct firmware_cache *fwc,
 				struct fw_priv **fw_priv, void *dbuf,
-				size_t size, enum fw_opt opt_flags)
+				size_t size, u32 opt_flags)
 {
 	struct fw_priv *tmp;
 
@@ -711,8 +711,7 @@ static int fw_add_devm_name(struct device *dev, const char *name)
 }
 #endif
 
-int assign_fw(struct firmware *fw, struct device *device,
-	      enum fw_opt opt_flags)
+int assign_fw(struct firmware *fw, struct device *device, u32 opt_flags)
 {
 	struct fw_priv *fw_priv = fw->priv;
 	int ret;
@@ -763,7 +762,7 @@ int assign_fw(struct firmware *fw, struct device *device,
 static int
 _request_firmware_prepare(struct firmware **firmware_p, const char *name,
 			  struct device *device, void *dbuf, size_t size,
-			  enum fw_opt opt_flags)
+			  u32 opt_flags)
 {
 	struct firmware *firmware;
 	struct fw_priv *fw_priv;
@@ -851,7 +850,7 @@ static bool name_contains_dotdot(const char *name)
 static int
 _request_firmware(const struct firmware **firmware_p, const char *name,
 		  struct device *device, void *buf, size_t size,
-		  enum fw_opt opt_flags)
+		  u32 opt_flags)
 {
 	struct firmware *fw = NULL;
 	struct cred *kern_cred = NULL;
@@ -1133,7 +1132,7 @@ struct firmware_work {
 	struct device *device;
 	void *context;
 	void (*cont)(const struct firmware *fw, void *context);
-	enum fw_opt opt_flags;
+	u32 opt_flags;
 };
 
 static void request_firmware_work_func(struct work_struct *work)
