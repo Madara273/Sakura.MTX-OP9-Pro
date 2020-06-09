@@ -18,7 +18,6 @@
 #include <linux/cma.h>
 #endif
 #include <asm/page.h>
-#include <asm/pgtable.h>
 #include "internal.h"
 #ifdef CONFIG_QCOM_MINIDUMP_PANIC_DUMP
 #include <soc/qcom/minidump.h>
