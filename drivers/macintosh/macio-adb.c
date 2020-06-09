@@ -11,7 +11,7 @@
 #include <asm/prom.h>
 #include <linux/adb.h>
 #include <asm/io.h>
-#include <asm/pgtable.h>
+#include <linux/pgtable.h>
 #include <asm/hydra.h>
 #include <asm/irq.h>
 #include <linux/init.h>
