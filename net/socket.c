@@ -2106,6 +2106,8 @@ int __sys_setsockopt(int fd, int level, int optname, char __user *optval,
 
 	if (level == SOL_SOCKET && !sock_use_custom_sol_socket(sock))
 		err = sock_setsockopt(sock, level, optname, optval, optlen);
+	else if (unlikely(!sock->ops->setsockopt))
+		err = -EOPNOTSUPP;
 	else
 		err = sock->ops->setsockopt(sock, level, optname, optval,
 					    optlen);
@@ -2150,6 +2152,8 @@ int __sys_getsockopt(int fd, int level, int optname, char __user *optval,
 
 	if (level == SOL_SOCKET)
 		err = sock_getsockopt(sock, level, optname, optval, optlen);
+	else if (unlikely(!sock->ops->getsockopt))
+		err = -EOPNOTSUPP;
 	else
 		err = sock->ops->getsockopt(sock, level, optname, optval,
 					    optlen);
