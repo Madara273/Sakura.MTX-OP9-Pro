@@ -210,3 +210,5 @@ int chown_common(const struct path *path, uid_t user, gid_t group);
 int chmod_common(const struct path *path, umode_t mode);
 
 int may_linkat(struct path *link);
+
+int vfs_utimes(const struct path *path, struct timespec64 *times);

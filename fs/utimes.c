@@ -7,6 +7,7 @@
 #include <linux/uaccess.h>
 #include <linux/compat.h>
 #include <asm/unistd.h>
+#include "internal.h"
 
 static bool nsec_valid(long nsec)
 {
@@ -16,7 +17,7 @@ static bool nsec_valid(long nsec)
 	return nsec >= 0 && nsec <= 999999999;
 }
 
-static int utimes_common(const struct path *path, struct timespec64 *times)
+int vfs_utimes(const struct path *path, struct timespec64 *times)
 {
 	int error;
 	struct iattr newattrs;
@@ -109,7 +110,7 @@ long do_utimes(int dfd, const char __user *filename, struct timespec64 *times,
 		if (!f.file)
 			goto out;
 
-		error = utimes_common(&f.file->f_path, times);
+		error = vfs_utimes(&f.file->f_path, times);
 		fdput(f);
 	} else {
 		struct path path;
@@ -124,7 +125,7 @@ retry:
 		if (error)
 			goto out;
 
-		error = utimes_common(&path, times);
+		error = vfs_utimes(&path, times);
 		path_put(&path);
 		if (retry_estale(error, lookup_flags)) {
 			lookup_flags |= LOOKUP_REVAL;
