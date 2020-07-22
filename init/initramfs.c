@@ -297,7 +297,7 @@ static void __init clean_path(char *path, umode_t fmode)
 {
 	struct kstat st;
 
-	if (!vfs_lstat(path, &st) && (st.mode ^ fmode) & S_IFMT) {
+	if (!init_stat(path, &st, AT_SYMLINK_NOFOLLOW) && (st.mode ^ fmode) & S_IFMT) {
 		if (S_ISDIR(st.mode))
 			init_rmdir(path);
 		else
@@ -609,7 +609,7 @@ static void __init clean_rootfs(void)
 			struct kstat st;
 			int ret;
 
-			ret = vfs_lstat(dirp->d_name, &st);
+			ret = init_stat(dirp->d_name, &st, AT_SYMLINK_NOFOLLOW);
 			WARN_ON_ONCE(ret);
 			if (!ret) {
 				if (S_ISDIR(st.mode))
