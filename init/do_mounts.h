@@ -24,7 +24,7 @@ static inline int create_dev(char *name, dev_t dev)
 static inline u32 bstat(char *name)
 {
 	struct kstat stat;
-	if (vfs_stat(name, &stat) != 0)
+	if (init_stat(name, &stat, 0) != 0)
 		return 0;
 	if (!S_ISBLK(stat.mode))
 		return 0;
