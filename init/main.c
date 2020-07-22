@@ -19,6 +19,7 @@
 #include <linux/binfmts.h>
 #include <linux/kernel.h>
 #include <linux/syscalls.h>
+#include <linux/init_syscalls.h>
 #include <linux/stackprotector.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
@@ -1213,8 +1214,7 @@ static noinline void __init kernel_init_freeable(void)
 	if (!ramdisk_execute_command)
 		ramdisk_execute_command = "/init";
 
-	if (ksys_access((const char __user *)
-			ramdisk_execute_command, 0) != 0) {
+	if (init_eaccess(ramdisk_execute_command) != 0) {
 		ramdisk_execute_command = NULL;
 		prepare_namespace();
 	}
