@@ -40,11 +40,13 @@
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
 
+
 #include "internal.h"
 #include "mount.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/namei.h>
+
 
 /* [Feb-1997 T. Schoebel-Theuer]
  * Fundamental changes in the pathname lookup mechanisms (namei)
@@ -1141,7 +1143,7 @@ static bool safe_hardlink_source(struct inode *inode)
  *
  * Returns 0 if successful, -ve on error.
  */
-static int may_linkat(struct path *link)
+int may_linkat(struct path *link)
 {
 	struct inode *inode = link->dentry->d_inode;
 
@@ -1712,8 +1714,10 @@ static struct dentry *__lookup_hash(const struct qstr *name,
 	struct dentry *old;
 	struct inode *dir = base->d_inode;
 
-	if (dentry)
+
+	if (dentry) {
 		return dentry;
+	}
 
 	/* Don't create child dentry for a dead directory. */
 	if (unlikely(IS_DEADDIR(dir)))
@@ -2274,6 +2278,7 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 		err = may_lookup(nd);
 		if (err)
 			return err;
+
 
 		hash_len = hash_name(nd->path.dentry, name);
 
@@ -3410,6 +3415,7 @@ static int do_last(struct nameidata *nd,
 	struct path path;
 	int error;
 
+
 	nd->flags &= ~LOOKUP_PARENT;
 	nd->flags |= op->intent;
 
@@ -3695,6 +3701,7 @@ static struct file *path_openat(struct nameidata *nd,
 	}
 	return ERR_PTR(error);
 }
+
 
 struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op)
