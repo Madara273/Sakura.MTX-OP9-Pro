@@ -204,3 +204,5 @@ int sb_init_dio_done_wq(struct super_block *sb);
  * fs/file.c
  */
 bool file_seek_cur_needs_f_lock(struct file *file);
+
+int chown_common(const struct path *path, uid_t user, gid_t group);
