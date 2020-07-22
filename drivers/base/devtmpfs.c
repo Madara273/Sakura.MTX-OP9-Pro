@@ -408,7 +408,7 @@ static int __ref devtmpfsd(void *p)
 	if (*err)
 		goto out;
 	init_chdir("/.."); /* will traverse into overmounted root */
-	ksys_chroot(".");
+	init_chroot(".");
 	complete(&setup_done);
 	while (1) {
 		spin_lock(&req_lock);
