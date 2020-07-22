@@ -208,3 +208,5 @@ bool file_seek_cur_needs_f_lock(struct file *file);
 int chown_common(const struct path *path, uid_t user, gid_t group);
 
 int chmod_common(const struct path *path, umode_t mode);
+
+int may_linkat(struct path *link);
