@@ -581,7 +581,7 @@ SYSCALL_DEFINE1(chroot, const char __user *, filename)
 	return ksys_chroot(filename);
 }
 
-static int chmod_common(const struct path *path, umode_t mode)
+int chmod_common(const struct path *path, umode_t mode)
 {
 	struct inode *inode = path->dentry->d_inode;
 	struct inode *delegated_inode = NULL;
