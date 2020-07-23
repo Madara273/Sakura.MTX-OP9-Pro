@@ -3331,7 +3331,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level, int optname,
 	return err;
 }
 
-int tcp_setsockopt(struct sock *sk, int level, int optname, char __user *optval,
+int tcp_setsockopt(struct sock *sk, int level, int optname, sockptr_t optval,
 		   unsigned int optlen)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
@@ -3340,7 +3340,7 @@ int tcp_setsockopt(struct sock *sk, int level, int optname, char __user *optval,
 		/* Paired with WRITE_ONCE() in do_ipv6_setsockopt() and tcp_v6_connect() */
 		return READ_ONCE(icsk->icsk_af_ops)->setsockopt(sk, level, optname,
 								optval, optlen);
-	return do_tcp_setsockopt(sk, level, optname, USER_SOCKPTR(optval),
+	return do_tcp_setsockopt(sk, level, optname, optval, optlen);
 }
 EXPORT_SYMBOL(tcp_setsockopt);
 
