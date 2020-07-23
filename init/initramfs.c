@@ -8,6 +8,7 @@
 #include <linux/string.h>
 #include <linux/dirent.h>
 #include <linux/syscalls.h>
+#include <linux/init_syscalls.h>
 #include <linux/utime.h>
 #include <linux/file.h>
 
@@ -300,7 +301,7 @@ static void __init clean_path(char *path, umode_t fmode)
 		if (S_ISDIR(st.mode))
 			ksys_rmdir(path);
 		else
-			ksys_unlink(path);
+			init_unlink(path);
 	}
 }
 
@@ -614,7 +615,7 @@ static void __init clean_rootfs(void)
 				if (S_ISDIR(st.mode))
 					ksys_rmdir(dirp->d_name);
 				else
-					ksys_unlink(dirp->d_name);
+					init_unlink(dirp->d_name);
 			}
 
 			num -= dirp->d_reclen;

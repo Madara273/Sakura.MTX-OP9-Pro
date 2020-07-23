@@ -278,7 +278,7 @@ noclose_input:
 	ksys_close(out_fd);
 out:
 	kfree(buf);
-	ksys_unlink("/dev/ram");
+	init_unlink("/dev/ram");
 	return res;
 }
 
