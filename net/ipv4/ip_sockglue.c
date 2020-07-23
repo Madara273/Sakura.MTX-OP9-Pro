@@ -1441,7 +1441,8 @@ int ip_setsockopt(struct sock *sk, int level,
 			optname != IP_IPSEC_POLICY &&
 			optname != IP_XFRM_POLICY &&
 			!ip_mroute_opt(optname))
-		err = nf_setsockopt(sk, PF_INET, optname, optval, optlen);
+		err = nf_setsockopt(sk, PF_INET, optname, USER_SOCKPTR(optval),
+				    optlen);
 #endif
 	return err;
 }
