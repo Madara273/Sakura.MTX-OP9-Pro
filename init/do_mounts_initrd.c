@@ -48,10 +48,7 @@ early_param("initrd", early_initrd);
 static int __init init_linuxrc(struct subprocess_info *info, struct cred *new)
 {
 	ksys_unshare(CLONE_FS | CLONE_FILES);
-	/* stdin/stdout/stderr for /linuxrc */
-	ksys_open("/dev/console", O_RDWR, 0);
-	ksys_dup(0);
-	ksys_dup(0);
+	console_on_rootfs();
 	/* move initrd over / and chdir/chroot in initrd root */
 	init_chdir("/root");
 	init_mount(".", "/", NULL, MS_MOVE, NULL);

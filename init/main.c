@@ -19,6 +19,7 @@
 #include <linux/binfmts.h>
 #include <linux/kernel.h>
 #include <linux/syscalls.h>
+#include <linux/file.h>
 #include <linux/init_syscalls.h>
 #include <linux/stackprotector.h>
 #include <linux/string.h>
@@ -104,6 +105,8 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
+
+#include "do_mounts.h"
 
 #ifdef CONFIG_QGKI_MSM_BOOT_TIME_MARKER
 #include <soc/qcom/boot_stats.h>
@@ -1164,6 +1167,21 @@ static int __ref kernel_init(void *unused)
 	      "See Linux Documentation/admin-guide/init.rst for guidance.");
 }
 
+void __init console_on_rootfs(void)
+{
+	struct file *file = filp_open("/dev/console", O_RDWR, 0);
+
+	if (IS_ERR(file)) {
+		pr_err("Warning: unable to open an initial console.\n");
+		return;
+	}
+
+	init_dup(file);
+	init_dup(file);
+	init_dup(file);
+	fput(file);
+}
+
 static noinline void __init kernel_init_freeable(void)
 {
 	/*
@@ -1200,12 +1218,7 @@ static noinline void __init kernel_init_freeable(void)
 
 	do_basic_setup();
 
-	/* Open the /dev/console on the rootfs, this should never fail */
-	if (ksys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)
-		pr_err("Warning: unable to open an initial console.\n");
-
-	(void) ksys_dup(0);
-	(void) ksys_dup(0);
+	console_on_rootfs();
 	/*
 	 * check if there is an early userspace init.  If yes, let it do all
 	 * the work
