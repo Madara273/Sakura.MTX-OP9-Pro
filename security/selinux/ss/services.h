@@ -24,7 +24,7 @@ struct selinux_map {
 };
 
 struct selinux_policy {
-	struct sidtab sidtab;
+	struct sidtab *sidtab;
 	struct policydb policydb;
 	struct selinux_map map;
 };
