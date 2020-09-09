@@ -6732,8 +6732,7 @@ EXPORT_SYMBOL(napi_busy_loop);
 
 static void napi_hash_add(struct napi_struct *napi)
 {
-	if (test_bit(NAPI_STATE_NO_BUSY_POLL, &napi->state) ||
-	    test_and_set_bit(NAPI_STATE_HASHED, &napi->state))
+	if (test_bit(NAPI_STATE_NO_BUSY_POLL, &napi->state))
 		return;
 
 	spin_lock(&napi_hash_lock);
@@ -6758,8 +6757,7 @@ static void napi_hash_del(struct napi_struct *napi)
 {
 	spin_lock(&napi_hash_lock);
 
-	if (test_and_clear_bit(NAPI_STATE_HASHED, &napi->state))
-		hlist_del_rcu(&napi->napi_hash_node);
+	hlist_del_init_rcu(&napi->napi_hash_node);
 
 	spin_unlock(&napi_hash_lock);
 }
@@ -6837,7 +6835,11 @@ int dev_set_threaded(struct net_device *dev, bool threaded)
 void netif_napi_add(struct net_device *dev, struct napi_struct *napi,
 		    int (*poll)(struct napi_struct *, int), int weight)
 {
+	if (WARN_ON(test_and_set_bit(NAPI_STATE_LISTED, &napi->state)))
+		return;
+
 	INIT_LIST_HEAD(&napi->poll_list);
+	INIT_HLIST_NODE(&napi->napi_hash_node);
 	hrtimer_init(&napi->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
 	napi->timer.function = napi_watchdog;
 	init_gro_hash(napi);
@@ -6917,6 +6919,9 @@ static void flush_gro_hash(struct napi_struct *napi)
 /* Must be called in process context */
 void __netif_napi_del(struct napi_struct *napi)
 {
+	if (!test_and_clear_bit(NAPI_STATE_LISTED, &napi->state))
+		return;
+
 	napi_hash_del(napi);
 	list_del_init(&napi->dev_list);
 	napi_free_frags(napi);
