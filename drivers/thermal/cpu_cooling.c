@@ -352,7 +352,6 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 /**
  * cpufreq_get_requested_power() - get the current power
  * @cdev:	&thermal_cooling_device pointer
- * @tz:		a valid thermal zone device pointer
  * @power:	pointer in which to store the resulting power
  *
  * Calculate the current power consumption of the cpus in milliwatts
@@ -373,7 +372,6 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
  * Return: 0 on success, -E* if getting the static power failed.
  */
 static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
-				       struct thermal_zone_device *tz,
 				       u32 *power)
 {
 	unsigned long freq;
@@ -423,7 +421,6 @@ static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
 /**
  * cpufreq_state2power() - convert a cpu cdev state to power consumed
  * @cdev:	&thermal_cooling_device pointer
- * @tz:		a valid thermal zone device pointer
  * @state:	cooling device state to be converted
  * @power:	pointer in which to store the resulting power
  *
@@ -436,7 +433,6 @@ static int cpufreq_get_requested_power(struct thermal_cooling_device *cdev,
  * when calculating the static power.
  */
 static int cpufreq_state2power(struct thermal_cooling_device *cdev,
-			       struct thermal_zone_device *tz,
 			       unsigned long state, u32 *power)
 {
 	unsigned int freq, num_cpus;
@@ -457,7 +453,6 @@ static int cpufreq_state2power(struct thermal_cooling_device *cdev,
 /**
  * cpufreq_power2state() - convert power to a cooling device state
  * @cdev:	&thermal_cooling_device pointer
- * @tz:		a valid thermal zone device pointer
  * @power:	power in milliwatts to be converted
  * @state:	pointer in which to store the resulting state
  *
@@ -475,8 +470,7 @@ static int cpufreq_state2power(struct thermal_cooling_device *cdev,
  * device.
  */
 static int cpufreq_power2state(struct thermal_cooling_device *cdev,
-			       struct thermal_zone_device *tz, u32 power,
-			       unsigned long *state)
+			       u32 power, unsigned long *state)
 {
 	unsigned int target_freq;
 	u32 last_load, normalised_power;
