@@ -486,6 +486,8 @@ then
 	grep -E 'Start batch|Starting build\.' $T/script |
 		grep -v ">>" |
 		sed -e 's/:.*$//' -e 's/^echo //'
+	nbatches="`grep 'Start batch' $T/script | grep -v ">>" | wc -l`"
+	echo Total number of batches: $nbatches
 	exit 0
 else
 	# Not a dryrun, so run the script.
