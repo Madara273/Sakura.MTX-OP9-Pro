@@ -368,6 +368,7 @@ struct napi_struct {
 };
 
 enum {
+
 	NAPI_STATE_SCHED,	/* Poll is scheduled */
 	NAPI_STATE_MISSED,	/* reschedule a napi */
 	NAPI_STATE_DISABLE,	/* Disable pending */
@@ -377,6 +378,7 @@ enum {
 	NAPI_STATE_IN_BUSY_POLL,/* sk_busy_loop() owns this NAPI */
 	NAPI_STATE_THREADED,	/* The poll is performed inside its own thread*/
 	NAPI_STATE_SCHED_THREADED,/* Napi is currently scheduled in threaded mode */
+	NAPI_STATE_PREFER_BUSY_POLL,	/* prefer busy-polling over softirq processing*/
 };
 
 enum {
@@ -389,6 +391,7 @@ enum {
 	NAPIF_STATE_IN_BUSY_POLL = BIT(NAPI_STATE_IN_BUSY_POLL),
 	NAPIF_STATE_THREADED	 = BIT(NAPI_STATE_THREADED),
 	NAPIF_STATE_SCHED_THREADED	= BIT(NAPI_STATE_SCHED_THREADED),
+	NAPIF_STATE_PREFER_BUSY_POLL	= BIT(NAPI_STATE_PREFER_BUSY_POLL),
 };
 
 enum gro_result {
@@ -457,6 +460,11 @@ void __napi_schedule_irqoff(struct napi_struct *n);
 static inline bool napi_disable_pending(struct napi_struct *n)
 {
 	return test_bit(NAPI_STATE_DISABLE, &n->state);
+}
+
+static inline bool napi_prefer_busy_poll(struct napi_struct *n)
+{
+	return test_bit(NAPI_STATE_PREFER_BUSY_POLL, &n->state);
 }
 
 bool napi_schedule_prep(struct napi_struct *n);
