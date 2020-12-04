@@ -1323,6 +1323,9 @@ static int isotp_setsockopt_locked(struct socket *sock, int level, int optname,
 	if (so->bound)
 		return -EISCONN;
 
+	if (so->bound)
+		return -EISCONN;
+
 	switch (optname) {
 	case CAN_ISOTP_OPTS:
 		if (optlen != sizeof(struct can_isotp_options))
