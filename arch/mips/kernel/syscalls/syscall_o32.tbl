@@ -425,3 +425,4 @@
 435	o32	clone3				__sys_clone3
 436	o32	close_range			sys_close_range
 438	o32	pidfd_getfd			sys_pidfd_getfd
+441	o32	epoll_pwait2			sys_epoll_pwait2		compat_sys_epoll_pwait2
