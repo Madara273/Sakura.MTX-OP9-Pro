@@ -2715,10 +2715,3 @@ out_notsup:
 	goto out;
 }
 EXPORT_SYMBOL_GPL(nfs_permission);
-
-/*
- * Local variables:
- *  version-control: t
- *  kept-new-versions: 5
- * End:
- */
