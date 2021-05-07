@@ -1039,9 +1039,3 @@ static void __exit exit_ch_module(void)
 
 module_init(init_ch_module);
 module_exit(exit_ch_module);
-
-/*
- * Local variables:
- * c-basic-offset: 8
- * End:
- */

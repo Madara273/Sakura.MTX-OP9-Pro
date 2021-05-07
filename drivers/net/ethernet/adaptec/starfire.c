@@ -2092,11 +2092,3 @@ static void __exit starfire_cleanup (void)
 
 module_init(starfire_init);
 module_exit(starfire_cleanup);
-
-
-/*
- * Local variables:
- *  c-basic-offset: 8
- *  tab-width: 8
- * End:
- */
