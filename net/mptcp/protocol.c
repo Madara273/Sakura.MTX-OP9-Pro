@@ -891,6 +891,7 @@ static bool mptcp_frag_can_collapse_to(const struct mptcp_sock *msk,
 {
 	return df && pfrag->page == df->page &&
 		pfrag->size - pfrag->offset > 0 &&
+		pfrag->offset == (df->offset + df->data_len) &&
 		df->data_seq + df->data_len == msk->write_seq;
 }
 
