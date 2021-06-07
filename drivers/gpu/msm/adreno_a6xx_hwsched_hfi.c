@@ -1254,12 +1254,6 @@ skipib:
 	if (ret)
 		return ret;
 
-	/*
-	 * Memory barrier to make sure packet and write index are written before
-	 * an interrupt is raised
-	 */
-	wmb();
-
 	add_profile_events(adreno_dev, drawobj, &time);
 	cmdobj->submit_ticks = time.ticks;
 
