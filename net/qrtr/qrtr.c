@@ -1480,8 +1480,8 @@ static void qrtr_reset_ports(void)
 
 		sock_hold(&ipc->sk);
 		ipc->sk.sk_err = ENETRESET;
-		if (ipc->sk.sk_error_report)
-			ipc->sk.sk_error_report(&ipc->sk);
+
+		sk_error_report(&ipc->sk);
 		sock_put(&ipc->sk);
 	}
 }
