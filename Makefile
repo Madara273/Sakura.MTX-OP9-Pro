@@ -1130,12 +1130,6 @@ else
 CC_FLAGS_LTO_CLANG := -flto -fvisibility=hidden
 endif
 
-# Limit inlining across translation units to reduce binary size
-LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
-
-KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
-KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
-
 KBUILD_LDS_MODULE += $(srctree)/scripts/module-lto.lds
 
 # Set O3 optimization level for LTO
