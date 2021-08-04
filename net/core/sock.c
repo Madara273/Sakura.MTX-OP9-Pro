@@ -1290,6 +1290,15 @@ set_sndbuf:
 		ret = sock_bindtoindex_locked(sk, val);
 		break;
 
+	case SO_BUF_LOCK:
+		if (val & ~SOCK_BUF_LOCK_MASK) {
+			ret = -EINVAL;
+			break;
+		}
+		sk->sk_userlocks = val | (sk->sk_userlocks &
+					  ~SOCK_BUF_LOCK_MASK);
+		break;
+
 	default:
 		ret = -ENOPROTOOPT;
 		break;
@@ -1670,6 +1679,10 @@ static int sk_getsockopt(struct sock *sk, int level, int optname,
 		if (len != lv)
 			return -EINVAL;
 		v.val64 = sock_net(sk)->net_cookie;
+		break;
+
+	case SO_BUF_LOCK:
+		v.val = sk->sk_userlocks & SOCK_BUF_LOCK_MASK;
 		break;
 
 	default:
