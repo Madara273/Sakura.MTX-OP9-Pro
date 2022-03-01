@@ -421,7 +421,7 @@ HOSTCXX	= $(CCACHE) g++
 endif
 KBUILD_HOSTCFLAGS   := -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 \
 		-fomit-frame-pointer -std=gnu11 -Wno-deprecated-declarations -pipe $(HOST_LFS_CFLAGS) \
-		$(HOSTCFLAGS)
+		$(HOSTCFLAGS) -Wdeclaration-after-statement
 KBUILD_HOSTCXXFLAGS := -O3 $(HOST_LFS_CFLAGS) $(HOSTCXXFLAGS)
 KBUILD_HOSTLDFLAGS  := $(HOST_LFS_LDFLAGS) $(HOSTLDFLAGS)
 KBUILD_HOSTLDLIBS   := $(HOST_LFS_LIBS) $(HOSTLDLIBS)
