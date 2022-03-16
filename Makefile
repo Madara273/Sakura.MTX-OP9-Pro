@@ -854,6 +854,15 @@ KBUILD_CFLAGS	+= $(call cc-disable-warning, format-truncation)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, format-overflow)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, address-of-packed-member)
 
+ifdef CONFIG_CC_IS_CLANG
+MCU_FLAGS := -mcpu=cortex-a55
+else
+MCU_FLAGS := -mcpu=cortex-a76.cortex-a55
+endif
+
+KBUILD_CFLAGS += $(MCU_FLAGS)
+KBUILD_AFLAGS += $(MCU_FLAGS)
+
 ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
 KBUILD_CFLAGS += -O2
 else ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
@@ -865,6 +874,12 @@ endif
 ifdef CONFIG_CC_WERROR
 KBUILD_CFLAGS  += -Werror
 endif
+
+# Optimize for lahaina's little CPU
+MCU_FLAGS := -mcpu=cortex-a55
+
+KBUILD_CFLAGS += $(MCU_FLAGS)
+KBUILD_AFLAGS += $(MCU_FLAGS)
 
 # Tell gcc to never replace conditional load with a non-conditional one
 KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
