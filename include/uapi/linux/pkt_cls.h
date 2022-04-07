@@ -223,7 +223,7 @@ struct tc_u32_sel {
 
 	short			hoff;
 	__be32			hmask;
-	struct tc_u32_key	keys[0];
+	struct tc_u32_key	keys[];
 };
 
 struct tc_u32_mark {
@@ -235,7 +235,7 @@ struct tc_u32_mark {
 struct tc_u32_pcnt {
 	__u64 rcnt;
 	__u64 rhit;
-	__u64 kcnts[0];
+	__u64 kcnts[];
 };
 
 /* Flags */
