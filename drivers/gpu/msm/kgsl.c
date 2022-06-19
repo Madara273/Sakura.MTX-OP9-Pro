@@ -4275,11 +4275,6 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	vma->vm_file = file;
-
-	atomic64_add(entry->memdesc.size, &entry->priv->gpumem_mapped);
-
-	atomic_inc(&entry->map_count);
-
 	trace_kgsl_mem_mmap(entry, vma->vm_start);
 	return 0;
 }
