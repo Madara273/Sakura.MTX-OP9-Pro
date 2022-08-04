@@ -124,6 +124,10 @@ static struct elevator_type *elevator_find(const char *name,
 {
 	struct elevator_type *e;
 
+	/* Forbid init from changing I/O scheduler by default */
+	if (!strncmp(current->comm, "init", sizeof("init")))
+		return NULL;
+
 	list_for_each_entry(e, &elv_list, list) {
 		if (elevator_match(e, name, required_features))
 			return e;
@@ -632,7 +636,7 @@ static struct elevator_type *elevator_get_default(struct request_queue *q)
 	if (q->nr_hw_queues != 1)
 		return NULL;
 
-	return elevator_get(q, "mq-deadline", false);
+	return elevator_get(q, "ssg", false);
 }
 
 /*
