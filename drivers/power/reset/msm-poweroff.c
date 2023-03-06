@@ -409,7 +409,7 @@ static void msm_restart_prepare(const char *cmd)
 		restart_mode = RESTART_DLOAD;
 
 	set_dload_mode(download_mode &&
-			(in_panic || restart_mode == RESTART_DLOAD));
+			(restart_mode == RESTART_DLOAD));
 
 	if (qpnp_pon_check_hard_reset_stored()) {
 		/* Set warm reset as true when device is in dload mode */
