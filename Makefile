@@ -1154,7 +1154,6 @@ endif
 ifdef CONFIG_LTO_CLANG
 ifdef CONFIG_THINLTO
 CC_FLAGS_LTO_CLANG := -flto=thin $(call cc-option, -fsplit-lto-unit) $(call cc-option, -fvisibility=default)
-KBUILD_LDFLAGS	+= --thinlto-cache-dir=.thinlto-cache
 else
 CC_FLAGS_LTO_CLANG := -flto -fvisibility=hidden
 endif
