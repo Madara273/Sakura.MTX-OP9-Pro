@@ -5504,7 +5504,7 @@ size_t ZSTD_freeCDict(ZSTD_CDict* cdict)
  *  workspaceSize: Use ZSTD_estimateCDictSize()
  *                 to determine how large workspace must be.
  *  cParams : use ZSTD_getCParams() to transform a compression level
- *            into its relevants cParams.
+ *            into its relevant cParams.
  * @return : pointer to ZSTD_CDict*, or NULL if error (size too small)
  *  Note : there is no corresponding "free" function.
  *         Since workspace was allocated externally, it must be freed externally.
