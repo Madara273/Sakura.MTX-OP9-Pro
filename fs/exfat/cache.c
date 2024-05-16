@@ -46,7 +46,11 @@ int exfat_cache_init(void)
 {
 	exfat_cachep = kmem_cache_create("exfat_cache",
 				sizeof(struct exfat_cache),
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
+				0, SLAB_RECLAIM_ACCOUNT,
+#else
 				0, SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD,
+#endif
 				exfat_cache_init_once);
 	if (!exfat_cachep)
 		return -ENOMEM;
@@ -242,7 +246,7 @@ int exfat_get_cluster(struct inode *inode, unsigned int cluster,
 	unsigned int limit = sbi->num_clusters;
 	struct exfat_inode_info *ei = EXFAT_I(inode);
 	struct exfat_cache_id cid;
-	unsigned int content;
+	unsigned int content = 0;
 
 	if (ei->start_clu == EXFAT_FREE_CLUSTER) {
 		exfat_fs_error(sb,
