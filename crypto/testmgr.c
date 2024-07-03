@@ -749,14 +749,20 @@ static unsigned int generate_random_length(unsigned int max_len)
 
 	switch (prandom_u32() % 4) {
 	case 0:
-		return len % 64;
+		len %= 64;
+		break;
 	case 1:
-		return len % 256;
+		len %= 256;
+		break;
 	case 2:
-		return len % 1024;
+		len %= 1024;
+		break;
 	default:
-		return len;
+		break;
 	}
+	if (len && prandom_u32_below(rng, 4) == 0)
+		len = rounddown_pow_of_two(len);
+	return len;
 }
 
 /* Sometimes make some random changes to the given data buffer */
@@ -839,6 +845,8 @@ static char *generate_random_sgl_divisions(struct test_sg_division *divs,
 
 		if (div == &divs[max_divs - 1] || prandom_u32() % 2 == 0)
 			this_len = remaining;
+		else if (prandom_u32_below(rng, 4) == 0)
+			this_len = (remaining + 1) / 2;
 		else
 			this_len = 1 + (prandom_u32() % remaining);
 		div->proportion_of_total = this_len;
