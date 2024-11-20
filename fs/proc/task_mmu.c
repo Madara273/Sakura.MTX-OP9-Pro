@@ -463,6 +463,7 @@ static int show_vma_header_prefix(struct seq_file *m, unsigned long start,
 	return 0;
 }
 
+
 static void
 show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 {
@@ -480,6 +481,11 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 		dev = inode->i_sb->s_dev;
 		ino = inode->i_ino;
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
+        struct dentry *dentry = file->f_path.dentry;
+        if (dentry) {
+        	const char *path = (const char *)dentry->d_name.name; 
+            	if (strstr(path, "lineage")) { return; }
+            	}
 	}
 
 	start = vma->vm_start;
