@@ -83,8 +83,9 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
   branch=$(git -C "$repo_dir" status 2>&1 | grep "On branch" | sed -e 's/On branch //g')
   commit=$(git -C "$repo_dir" rev-parse --short=8 HEAD)
 
+  CC_VERSION=$(echo $CC_VERSION | perl -pe 's/\(http.*?\)//gs' | sed 's/[[:space:]]*$//')
   LD_VERSION=$($LD -v | head -n1 | sed 's/(compatible with [^)]*)//' \
-		      | sed 's/[[:space:]]*$//')
+		      | perl -pe 's/\(http.*?\)//gs' | sed 's/[[:space:]]*$//')
   if [ -z "$KBUILD_COMPILER_STRING" ]; then
     printf '#define LINUX_COMPILER "%s"\n' "$CC_VERSION, $LD_VERSION, $remote, $domain, $branch, $commit"
   else
