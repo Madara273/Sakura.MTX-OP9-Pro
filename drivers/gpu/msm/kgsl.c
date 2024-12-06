@@ -4537,7 +4537,7 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 		goto error_pwrctrl_close;
 	}
 
-	sched_setscheduler_nocheck(device->events_worker->task, SCHED_FIFO, &param);
+	sched_set_fifo(device->events_worker->task);
 
 	/* This can return -EPROBE_DEFER */
 	status = kgsl_mmu_probe(device);
@@ -4575,7 +4575,6 @@ error:
 void kgsl_device_platform_remove(struct kgsl_device *device)
 {
 	kthread_destroy_worker(device->events_worker);
-
 	idr_destroy(&device->context_idr);
 	idr_destroy(&device->timelines);
 
