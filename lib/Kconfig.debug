@@ -38,7 +38,7 @@ config PRINTK_CALLER
 config CONSOLE_LOGLEVEL_DEFAULT
 	int "Default console loglevel (1-15)"
 	range 1 15
-	default "7"
+	default 1
 	help
 	  Default loglevel to determine what will be printed on the console.
 
@@ -53,7 +53,7 @@ config CONSOLE_LOGLEVEL_DEFAULT
 config CONSOLE_LOGLEVEL_QUIET
 	int "quiet console loglevel (1-15)"
 	range 1 15
-	default "4"
+	default 1
 	help
 	  loglevel to use when "quiet" is passed on the kernel commandline.
 
@@ -64,7 +64,7 @@ config CONSOLE_LOGLEVEL_QUIET
 config MESSAGE_LOGLEVEL_DEFAULT
 	int "Default message log level (1-7)"
 	range 1 7
-	default "4"
+	default 1
 	help
 	  Default log level for printk statements with no specified priority.
 
