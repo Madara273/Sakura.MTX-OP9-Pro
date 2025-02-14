@@ -1,0 +1,29 @@
+name: Neutrino
+
+on:
+  workflow_dispatch:  # Start only manually
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Make build.sh executable
+        run: chmod +x build.sh
+
+      - name: Run build.sh
+        run: ./build.sh
+
+      - name: Copy built artifacts into accessible directory
+        run: |
+          OUT_PARENT_DIR="$(dirname $GITHUB_WORKSPACE)"
+          mkdir -p artifacts
+          cp "$OUT_PARENT_DIR/out/AnyKernel3/"*.zip artifacts/ || { echo "INFO: ZIPs not yet available. Continuing." && exit 0; }
+
+      - name: Upload ZIP files as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: artifacts/*.zip
