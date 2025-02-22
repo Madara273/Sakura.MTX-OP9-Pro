@@ -469,14 +469,27 @@ out:
 	return res;
 }
 
+#ifdef CONFIG_KSU
+extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+			                    int *flags);
+#endif
+
 SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 {
+#ifdef CONFIG_KSU
+	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
+#endif
 	return do_faccessat(dfd, filename, mode, 0);
 }
 
 SYSCALL_DEFINE4(faccessat2, int, dfd, const char __user *, filename, int, mode,
 		int, flags)
 {
+#ifdef CONFIG_KSU
+	int ksu_flags = flags;
+	ksu_handle_faccessat(&dfd, &filename, &mode, &ksu_flags);
+	flags = ksu_flags;
+#endif
 	return do_faccessat(dfd, filename, mode, flags);
 }
 
