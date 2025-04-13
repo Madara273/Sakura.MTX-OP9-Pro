@@ -879,8 +879,7 @@ KBUILD_CFLAGS	+= $(call cc-disable-warning, unused-value)
 ifdef CONFIG_CC_IS_CLANG
 MCU_FLAGS := -mcpu=cortex-a55
 else
-# Optimise kernel binary for 888's CPU
-MCU_FLAGS := -mcpu=cortex-x1
+MCU_FLAGS := -mcpu=cortex-a76.cortex-a55
 endif
 
 KBUILD_CFLAGS += $(MCU_FLAGS)
