@@ -379,7 +379,6 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	unsigned long util, max;
 	unsigned int next_f;
-	unsigned int cached_freq = sg_policy->cached_raw_freq;
 
 	if (flags & SCHED_CPUFREQ_PL)
 		return;
