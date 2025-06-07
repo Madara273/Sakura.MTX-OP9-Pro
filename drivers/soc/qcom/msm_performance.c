@@ -807,14 +807,6 @@ static int init_events_group(void)
 	return 0;
 }
 
-static void nr_notify_userspace(struct work_struct *work)
-{
-	sysfs_notify(notify_kobj, NULL, "aggr_top_load");
-	sysfs_notify(notify_kobj, NULL, "aggr_big_nr");
-	sysfs_notify(notify_kobj, NULL, "top_load_cluster");
-	sysfs_notify(notify_kobj, NULL, "curr_cap_cluster");
-}
-
 void  msm_perf_events_update(enum evt_update_t update_typ,
 			enum gfx_evt_t evt_typ, pid_t pid,
 			uint32_t ctx_id, uint32_t timestamp, bool end_of_frame)
