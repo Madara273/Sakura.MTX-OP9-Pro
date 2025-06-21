@@ -3539,11 +3539,20 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			mutex_unlock(&dev->mode_config.mutex);
 			return -EINVAL;
 		}
-		mutex_unlock(&dev->mode_config.mutex);
 
 		crtc->state->encoder_mask = (1 << drm_encoder_index(encoder));
+		/* get supported modes in case of external bridge panels*/
+		if (!dsi_display->panel->num_timing_nodes) {
+			connector->funcs->fill_modes(connector,
+				dev->mode_config.max_width,
+				dev->mode_config.max_height);
+			drm_mode = list_first_entry(&connector->modes,
+				struct drm_display_mode, head);
+		 }
+		 else
+			drm_mode = _sde_kms_get_splash_mode(sde_kms, connector, state);
 
-		drm_mode = _sde_kms_get_splash_mode(sde_kms, connector, state);
+		mutex_unlock(&dev->mode_config.mutex);
 		if (!drm_mode) {
 			SDE_ERROR("drm_mode not found; handoff_type:%d\n",
 					sde_kms->splash_data.type);
