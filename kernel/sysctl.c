@@ -399,6 +399,7 @@ static int bpf_stats_handler(struct ctl_table *table, int write,
 #endif
 
 static struct ctl_table kern_table[] = {
+	/*
 	{
 		.procname	= "sched_child_runs_first",
 		.data		= &sysctl_sched_child_runs_first,
@@ -406,6 +407,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0444,
 		.proc_handler	= proc_dointvec,
 	},
+	*/
 #ifdef CONFIG_QCOM_HYP_CORE_CTL
 	{
 		.procname	= "hh_suspend_timeout_ms",
