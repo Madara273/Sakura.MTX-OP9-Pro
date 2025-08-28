@@ -234,4 +234,6 @@ source "drivers/nothing_stability/Kconfig"
 
 source "drivers/kjson/Kconfig"
 
+source "drivers/lindroid-drm/Kconfig"
+
 endmenu
