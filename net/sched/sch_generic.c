@@ -582,7 +582,6 @@ struct Qdisc noop_qdisc = {
 	.q.lock		=	__SPIN_LOCK_UNLOCKED(noop_qdisc.q.lock),
 	.dev_queue	=	&noop_netdev_queue,
 	.running	=	SEQCNT_ZERO(noop_qdisc.running),
-	.busylock	=	__SPIN_LOCK_UNLOCKED(noop_qdisc.busylock),
 	.gso_skb = {
 		.next = (struct sk_buff *)&noop_qdisc.gso_skb,
 		.prev = (struct sk_buff *)&noop_qdisc.gso_skb,
@@ -896,13 +895,9 @@ struct Qdisc *qdisc_alloc(struct netdev_queue *dev_queue,
 		}
 	}
 
-	spin_lock_init(&sch->busylock);
-	lockdep_set_class(&sch->busylock,
-			  dev->qdisc_tx_busylock ?: &qdisc_tx_busylock);
-
-	/* seqlock has the same scope of busylock, for NOLOCK qdisc */
+	/* Serialize runners of NOLOCK qdiscs. */
 	spin_lock_init(&sch->seqlock);
-	lockdep_set_class(&sch->busylock,
+	lockdep_set_class(&sch->seqlock,
 			  dev->qdisc_tx_busylock ?: &qdisc_tx_busylock);
 
 	seqcount_init(&sch->running);
