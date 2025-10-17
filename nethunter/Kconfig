@@ -441,8 +441,6 @@ config NETHUNTER_WIFI_DRIVERS_SUPPORT
 
 	select RTL8XXXU
 
-	select 88XXAU
-
 	select RTW88
 
 	select RTL8XXXU_UNTESTED
