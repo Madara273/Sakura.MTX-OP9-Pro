@@ -2,7 +2,7 @@
  * ARM NEON accelerated ChaCha and XChaCha stream ciphers,
  * including ChaCha20 (RFC7539)
  *
- * Copyright (C) 2016 - 2017 Linaro, Ltd. <ard.biesheuvel@linaro.org>
+ * Copyright (C) 2016 Linaro, Ltd. <ard.biesheuvel@linaro.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -30,32 +30,35 @@
 #include <asm/neon.h>
 #include <asm/simd.h>
 
-asmlinkage void chacha_block_xor_neon(u32 *state, u8 *dst, const u8 *src,
+asmlinkage void chacha_block_xor_neon(const u32 *state, u8 *dst, const u8 *src,
 				      int nrounds);
-asmlinkage void chacha_4block_xor_neon(u32 *state, u8 *dst, const u8 *src,
-				       int nrounds, int bytes);
+asmlinkage void chacha_4block_xor_neon(const u32 *state, u8 *dst, const u8 *src,
+				       int nrounds);
 asmlinkage void hchacha_block_neon(const u32 *state, u32 *out, int nrounds);
 
 static void chacha_doneon(u32 *state, u8 *dst, const u8 *src,
-			  int bytes, int nrounds)
+			  unsigned int bytes, int nrounds)
 {
-	while (bytes > 0) {
-		int l = min(bytes, CHACHA_BLOCK_SIZE * 5);
+	u8 buf[CHACHA_BLOCK_SIZE];
 
-		if (l <= CHACHA_BLOCK_SIZE) {
-			u8 buf[CHACHA_BLOCK_SIZE];
-
-			memcpy(buf, src, l);
-			chacha_block_xor_neon(state, buf, buf, nrounds);
-			memcpy(dst, buf, l);
-			state[12] += 1;
-			break;
-		}
-		chacha_4block_xor_neon(state, dst, src, nrounds, l);
-		bytes -= CHACHA_BLOCK_SIZE * 5;
-		src += CHACHA_BLOCK_SIZE * 5;
-		dst += CHACHA_BLOCK_SIZE * 5;
-		state[12] += 5;
+	while (bytes >= CHACHA_BLOCK_SIZE * 4) {
+		chacha_4block_xor_neon(state, dst, src, nrounds);
+		bytes -= CHACHA_BLOCK_SIZE * 4;
+		src += CHACHA_BLOCK_SIZE * 4;
+		dst += CHACHA_BLOCK_SIZE * 4;
+		state[12] += 4;
+	}
+	while (bytes >= CHACHA_BLOCK_SIZE) {
+		chacha_block_xor_neon(state, dst, src, nrounds);
+		bytes -= CHACHA_BLOCK_SIZE;
+		src += CHACHA_BLOCK_SIZE;
+		dst += CHACHA_BLOCK_SIZE;
+		state[12]++;
+	}
+	if (bytes) {
+		memcpy(buf, src, bytes);
+		chacha_block_xor_neon(state, buf, buf, nrounds);
+		memcpy(dst, buf, bytes);
 	}
 }
 
@@ -74,7 +77,7 @@ static int chacha_neon_stream_xor(struct skcipher_request *req,
 		unsigned int nbytes = walk.nbytes;
 
 		if (nbytes < walk.total)
-			nbytes = rounddown(nbytes, walk.stride);
+			nbytes = round_down(nbytes, walk.stride);
 
 		kernel_neon_begin();
 		chacha_doneon(state, walk.dst.virt.addr, walk.src.virt.addr,
@@ -133,7 +136,7 @@ static struct skcipher_alg algs[] = {
 		.max_keysize		= CHACHA_KEY_SIZE,
 		.ivsize			= CHACHA_IV_SIZE,
 		.chunksize		= CHACHA_BLOCK_SIZE,
-		.walksize		= 5 * CHACHA_BLOCK_SIZE,
+		.walksize		= 4 * CHACHA_BLOCK_SIZE,
 		.setkey			= crypto_chacha20_setkey,
 		.encrypt		= chacha_neon,
 		.decrypt		= chacha_neon,
@@ -149,7 +152,7 @@ static struct skcipher_alg algs[] = {
 		.max_keysize		= CHACHA_KEY_SIZE,
 		.ivsize			= XCHACHA_IV_SIZE,
 		.chunksize		= CHACHA_BLOCK_SIZE,
-		.walksize		= 5 * CHACHA_BLOCK_SIZE,
+		.walksize		= 4 * CHACHA_BLOCK_SIZE,
 		.setkey			= crypto_chacha20_setkey,
 		.encrypt		= xchacha_neon,
 		.decrypt		= xchacha_neon,
@@ -165,7 +168,7 @@ static struct skcipher_alg algs[] = {
 		.max_keysize		= CHACHA_KEY_SIZE,
 		.ivsize			= XCHACHA_IV_SIZE,
 		.chunksize		= CHACHA_BLOCK_SIZE,
-		.walksize		= 5 * CHACHA_BLOCK_SIZE,
+		.walksize		= 4 * CHACHA_BLOCK_SIZE,
 		.setkey			= crypto_chacha12_setkey,
 		.encrypt		= xchacha_neon,
 		.decrypt		= xchacha_neon,
@@ -174,7 +177,7 @@ static struct skcipher_alg algs[] = {
 
 static int __init chacha_simd_mod_init(void)
 {
-	if (!cpu_have_named_feature(ASIMD))
+	if (!(elf_hwcap & HWCAP_NEON))
 		return -ENODEV;
 
 	return crypto_register_skciphers(algs, ARRAY_SIZE(algs));
