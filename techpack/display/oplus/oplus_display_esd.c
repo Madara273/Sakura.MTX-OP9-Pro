@@ -148,6 +148,7 @@ static int oplus_mdss_dsi_eva_panel_check_esd_status(struct dsi_display *display
 #endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 	} else {
 		rc = 1;
+		esd_black_count = 0;
 	}
 	return rc;
 }
@@ -197,6 +198,7 @@ static int oplus_mdss_dsi_samsung_amb655x_dsc_panel_check_esd_status(struct dsi_
 #endif  /*OPLUS_BUG_STABILITY*/
 	} else {
 		rc = 1;
+		esd_black_count = 0;
 	}
 	return rc;
 }
@@ -234,6 +236,7 @@ static int oplus_mdss_dsi_boe_nt37701_dsc_panel_check_esd_status(struct dsi_disp
 
 	if ((register1[0] == 0x9C) && (register2[0] == 0x00) && (register3[0] == 0x00)) {
 		rc = 1;
+		esd_black_count = 0;
 	} else {
 		DSI_ERR("ESD check failed : 0x0A = %02x, 0xAB = %02x, 0xFA = %02x\n", register1[0], register2[0], register3[0]);
 		rc = -1;
@@ -288,6 +291,7 @@ static int oplus_mdss_dsi_samsung_amb670yf01_dsc_panel_check_esd_status(struct d
 		rc = -1;
 	} else {
 		rc = 1;
+		esd_black_count = 0;
 	}
 	return rc;
 }
@@ -297,7 +301,7 @@ static int oplus_mdss_dsi_samsung_s6e3xa1_dsc_panel_check_esd_status(struct dsi_
 	int rc = 0;
 	unsigned char register1[5] = {0};
 	no_clear_slave_dma = 1;
-	rc = oplus_display_read_panel_reg(display, 0xEE, register1, 1);
+	rc = oplus_display_read_panel_reg(display, 0xEE, register1, 2);
 	no_clear_slave_dma = 0;
 	if (rc < 0)
 		return 0;
@@ -321,6 +325,7 @@ static int oplus_mdss_dsi_samsung_s6e3xa1_dsc_panel_check_esd_status(struct dsi_
 #endif /* OPLUS_BUG_STABILITY */
 	} else {
 		rc = 1;
+		esd_black_count = 0;
 	}
 	return rc;
 }
@@ -364,6 +369,7 @@ static int oplus_mdss_dsi_samsung_ams643ye01_dsc_panel_check_esd_status(struct d
 #endif  /*OPLUS_BUG_STABILITY*/
 	} else {
 		rc = 1;
+		esd_black_count = 0;
 	}
 	return rc;
 }
