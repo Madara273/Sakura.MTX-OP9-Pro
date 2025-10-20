@@ -261,27 +261,15 @@ static int oplus_mdss_dsi_samsung_amb670yf01_dsc_panel_check_esd_status(struct d
 	int rc = 0;
 	unsigned char register1[30] = {0};
 	unsigned char register2[30] = {0};
-#ifdef OPLUS_BUG_STABILITY
-			if (rc <= 0) {
-				char payload[200] = "";
-				int cnt = 0;
 
-				cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "DisplayDriverID@@408$$");
-				cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "ESD:");
-				cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "0x0A = %02x, 0xA2 = %02x, %02x, %02x, %02x, %02x",
-					register1[0], register2[0], register2[1], register2[2], register2[3], register2[4]);
-				DSI_MM_ERR("ESD check failed: %s\n", payload);
-			}
-#endif  /*OPLUS_BUG_STABILITY*/
-	{
-		rc = oplus_display_read_panel_reg(display, 0x0A, register1, 1);
-		if (rc < 0)
-			return 0;
+	rc = oplus_display_read_panel_reg(display, 0x0A, register1, 1);
+	if (rc < 0)
+		return 0;
 
-		rc = oplus_display_read_panel_reg(display, 0xA2, register2, 5);
-		if (rc < 0)
-			return 0;
-	}
+	rc = oplus_display_read_panel_reg(display, 0xA2, register2, 5);
+	if (rc < 0)
+		return 0;
+
 	if ((register1[0] != 0x9F && register1[0] != 0x9d) || (register2[0] != 0x11) || (register2[1] != 0x00)
 		|| (register2[2] != 0x00) || (register2[3] != 0xAB) || (register2[4] != 0x30)) {
 		esd_black_count++;
@@ -289,6 +277,21 @@ static int oplus_mdss_dsi_samsung_amb670yf01_dsc_panel_check_esd_status(struct d
 		DSI_ERR("0x0A = %02x, 0xA2 = %02x, %02x, %02x, %02x, %02x\n", register1[0],
 			  register2[0], register2[1], register2[2], register2[3], register2[4]);
 		rc = -1;
+#ifdef OPLUS_BUG_STABILITY
+		{
+			char payload[200] = "";
+			int cnt = 0;
+
+			cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "DisplayDriverID@@408$$");
+			cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "ESD:");
+			cnt += scnprintf(payload + cnt, sizeof(payload) - cnt,
+				"0x0A = %02x, 0xA2 = %02x, %02x, %02x, %02x, %02x",
+				register1[0], register2[0], register2[1], register2[2],
+				register2[3], register2[4]);
+			DSI_MM_ERR("ESD check failed: %s\n", payload);
+		}
+#endif /* OPLUS_BUG_STABILITY */
+
 	} else {
 		rc = 1;
 		esd_black_count = 0;
