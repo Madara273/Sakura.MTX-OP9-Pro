@@ -872,15 +872,34 @@ static void oplus_connector_temp_check_work(struct work_struct *work)
 
 	oplus_chg_vbus_status(bcdev, &bcdev->vbus_present);
 	if (!bcdev->vbus_present) {
-		if (!check_pass && count --) {
+	int retry_vbus = 0;
+	bool vbus_stable = false;
+
+	for (retry_vbus = 0; retry_vbus < 3; retry_vbus++) {
+		msleep(100);
+		oplus_chg_vbus_status(bcdev, &bcdev->vbus_present);
+		if (bcdev->vbus_present) {
+			vbus_stable = true;
+			break;
+		}
+	}
+
+	if (!vbus_stable) {
+		if (!check_pass && count--) {
 			schedule_delayed_work(&bcdev->connector_check_work,
 				msecs_to_jiffies(1500));
 			pr_err("Vbus not ready when protect algorithm runs, retry!! count: %d", count);
-		} else
-			pr_err("Vbus not present, return!!");
+		} else {
+			pr_warn("Vbus not present after retries, giving up");
+			count = 5;	// reset for next time
+		}
 		check_pass = false;
 		return;
+		}
 	}
+
+	check_pass = true;
+	count = 5;
 
 	bcdev->connector_temp = get_usb_temp(bcdev);
 	rc = oplus_chg_get_batt_temp(bcdev, &batt_temp);
