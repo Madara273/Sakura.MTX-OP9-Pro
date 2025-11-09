@@ -28,6 +28,7 @@ EXTRA_CFLAGS += -I../platform -I$(srctree)/drivers/staging/rtl8812au/platform
 
 EXTRA_CFLAGS += -I$(src)/hal/phydm -I$(srctree)/$(src)/hal/phydm
 EXTRA_LDFLAGS += --strip-all -O3
+EXTRA_CFLAGS += -std=gnu89
 
 ########################## WIFI IC ############################
 CONFIG_RTL8812A = y
