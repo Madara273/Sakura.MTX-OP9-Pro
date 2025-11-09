@@ -24,6 +24,7 @@ EXTRA_CFLAGS += -I../hal/phydm -I$(srctree)/drivers/staging/rtl8188eus/hal/phydm
 EXTRA_CFLAGS += -I../platform -I$(srctree)/drivers/staging/rtl8188eus/platform
 
 EXTRA_LDFLAGS += --strip-debug
+EXTRA_CFLAGS += -std=gnu89
 
 CONFIG_AUTOCFG_CP = n
 
