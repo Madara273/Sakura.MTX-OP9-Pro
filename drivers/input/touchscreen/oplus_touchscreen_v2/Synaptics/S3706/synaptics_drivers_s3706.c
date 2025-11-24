@@ -1214,7 +1214,7 @@ static int synaptics_get_gesture_info(void *chip_data,
 
 	case FINGERPRINT_UP_DETECT:
 		chip_info->is_fp_down = false;
-		gesture->gesture_type = FRINGER_PRINTUP;
+		gesture->gesture_type = FINGER_PRINTUP;
 
 		if (chip_info->force_update_needed) {
 			chip_info->force_update_needed = false;

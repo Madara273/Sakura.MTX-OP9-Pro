@@ -2153,7 +2153,7 @@ static int fts3658u_get_gesture_info(void *chip_data, struct gesture_info *gestu
 				ts_data->fod_info.fp_down_report = 1;
 
 			} else if (!ts_data->fod_info.fp_down && ts_data->fod_info.fp_down_report) {
-				gesture->gesture_type = FRINGER_PRINTUP;
+				gesture->gesture_type = FINGER_PRINTUP;
 				ts_data->fod_info.fp_down_report = 0;
 			}
 
@@ -2174,7 +2174,7 @@ static int fts3658u_get_gesture_info(void *chip_data, struct gesture_info *gestu
 	}
 
 	if ((gesture->gesture_type != FINGER_PRINTDOWN)
-	    && (gesture->gesture_type != FRINGER_PRINTUP)
+	    && (gesture->gesture_type != FINGER_PRINTUP)
 	    && (gesture->gesture_type != UNKOWN_GESTURE)) {
 		gesture->Point_start.x = (u16)((buf[4] << 8) + buf[5]);
 		gesture->Point_start.y = (u16)((buf[6] << 8) + buf[7]);

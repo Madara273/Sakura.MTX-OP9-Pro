@@ -1618,7 +1618,7 @@ int tp_healthinfo_read(struct seq_file *s, void *tp_monitor_data)
 			   *vc_value == M_GESTRUE ? "(M)" :
 			   *vc_value == W_GESTURE ? "(W)" :
 			   *vc_value == FINGER_PRINTDOWN ? "(fingerprintdown)" :
-			   *vc_value == FRINGER_PRINTUP ? "(fingerprintup)" :
+			   *vc_value == FINGER_PRINTUP ? "(fingerprintup)" :
 			   *vc_value == SINGLE_TAP ? "single_tap" :
 			   *vc_value == HEART ? "heart" : "unknown", vc->count);
 	}
@@ -1641,7 +1641,7 @@ int tp_healthinfo_read(struct seq_file *s, void *tp_monitor_data)
 			   *vc_value == M_GESTRUE ? "(M)" :
 			   *vc_value == W_GESTURE ? "(W)" :
 			   *vc_value == FINGER_PRINTDOWN ? "(fingerprintdown)" :
-			   *vc_value == FRINGER_PRINTUP ? "(fingerprintup)" :
+			   *vc_value == FINGER_PRINTUP ? "(fingerprintup)" :
 			   *vc_value == SINGLE_TAP ? "single_tap" :
 			   *vc_value == HEART ? "heart" : "unknown", vc->count);
 	}*/
