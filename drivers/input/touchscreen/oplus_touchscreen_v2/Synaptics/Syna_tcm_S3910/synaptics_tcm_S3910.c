@@ -4046,7 +4046,7 @@ static int syna_get_gesture_info(void *chip_data, struct gesture_info *gesture)
 		break;
 
 	case TOUCH_HOLD_UP:
-		gesture->gesture_type = FRINGER_PRINTUP;
+		gesture->gesture_type = FINGER_PRINTUP;
 		break;
 
 	case HEART_DETECT:

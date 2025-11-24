@@ -59,7 +59,7 @@
 #define M_GESTRUE		12  /* M*/
 #define W_GESTURE		13  /* W*/
 #define FINGER_PRINTDOWN	14
-#define FRINGER_PRINTUP		15
+#define FINGER_PRINTUP		15
 #define SINGLE_TAP		16
 #define HEART			17
 #define S_GESTURE		18
