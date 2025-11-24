@@ -490,7 +490,7 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		gesture_info_temp.gesture_type == M_GESTRUE ? "(M)" :
 		gesture_info_temp.gesture_type == W_GESTURE ? "(W)" :
 		gesture_info_temp.gesture_type == FINGER_PRINTDOWN ? "(fingerprintdown)" :
-		gesture_info_temp.gesture_type == FRINGER_PRINTUP ? "(fingerprintup)" :
+		gesture_info_temp.gesture_type == FINGER_PRINTUP ? "(fingerprintup)" :
 		gesture_info_temp.gesture_type == SINGLE_TAP ? "single tap" :
 		gesture_info_temp.gesture_type == HEART ? "heart" :
 		gesture_info_temp.gesture_type == S_GESTURE ? "(S)" : "unknown");
@@ -524,7 +524,7 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 
 	} else if (gesture_info_temp.gesture_type != UNKOWN_GESTURE
 		&& gesture_info_temp.gesture_type != FINGER_PRINTDOWN
-		&& gesture_info_temp.gesture_type != FRINGER_PRINTUP
+		&& gesture_info_temp.gesture_type != FINGER_PRINTUP
 		&& CHK_BIT(ts->gesture_enable_indep, (1 << gesture_info_temp.gesture_type))) {
 		tp_memcpy(&ts->gesture, sizeof(ts->gesture), \
 			  &gesture_info_temp, sizeof(struct gesture_info), \
@@ -540,7 +540,7 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		ts->fp_info.y = gesture_info_temp.Point_start.y;
 		TP_INFO(ts->tp_index, "screen off down : (%d, %d)\n", ts->fp_info.x, ts->fp_info.y);
 		touch_call_notifier_fp(&ts->fp_info);
-	} else if (gesture_info_temp.gesture_type == FRINGER_PRINTUP) {
+	} else if (gesture_info_temp.gesture_type == FINGER_PRINTUP) {
 		ts->fp_info.touch_state = 0;
 		ts->fp_info.x = gesture_info_temp.Point_start.x;
 		ts->fp_info.y = gesture_info_temp.Point_start.y;
