@@ -16,7 +16,9 @@ EXTRA_CFLAGS += -Wno-unused-function
 #EXTRA_CFLAGS += -Wno-unused
 #EXTRA_CFLAGS += -Wno-uninitialized
 EXTRA_CFLAGS += -Wno-implicit-fallthrough
-
+ifneq ($(findstring gcc,$(CC)),)
+ccflags-y += -Wno-stringop-overread
+endif
 EXTRA_CFLAGS += -Wno-date-time
 
 EXTRA_CFLAGS += -I../include -I$(srctree)/drivers/staging/rtl8814au/include

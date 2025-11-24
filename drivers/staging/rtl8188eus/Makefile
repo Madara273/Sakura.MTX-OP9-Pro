@@ -12,10 +12,12 @@ EXTRA_CFLAGS += -Wno-date-time
 EXTRA_CFLAGS += -Wno-missing-prototypes
 EXTRA_CFLAGS += -Wno-missing-declarations
 
-
 GCC_VER_49 := $(shell echo `$(CC) -dumpversion | cut -f1-2 -d.` \>= 4.9 | bc )
 ifeq ($(GCC_VER_49),1)
 EXTRA_CFLAGS += -Wno-date-time	# Fix compile error && warning on gcc 4.9 and later
+endif
+ifneq ($(findstring gcc,$(CC)),)
+ccflags-y += -Wno-stringop-overread
 endif
 
 EXTRA_CFLAGS += -I../include -I$(srctree)/drivers/staging/rtl8188eus/include
