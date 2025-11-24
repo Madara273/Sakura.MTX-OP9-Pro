@@ -861,15 +861,13 @@ halrf_segment_iqk_trigger(
 
 #endif
 
-
-
 u8 halrf_match_iqk_version(void	*dm_void)
 {
 	struct dm_struct *dm = (struct dm_struct *)dm_void;
 	struct _hal_rf_				*rf = &dm->rf_table;
 
 	u32 iqk_version = 0;
-	char temp[10] = {0};
+	char temp[8] = {0};
 
 	odm_move_memory(dm, temp, (PVOID)(HALRF_IQK_VER), sizeof(temp));
 	PHYDM_SSCANF(temp + 2, DCMD_HEX, &iqk_version);
@@ -892,8 +890,6 @@ u8 halrf_match_iqk_version(void	*dm_void)
 
 	return 1;
 }
-
-
 
 void
 halrf_rf_lna_setting(
