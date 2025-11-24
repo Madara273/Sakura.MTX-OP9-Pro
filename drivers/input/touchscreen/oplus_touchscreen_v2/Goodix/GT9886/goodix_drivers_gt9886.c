@@ -2644,7 +2644,7 @@ static int goodix_get_gesture_info(void *chip_data,
 		break;
 
 	case FP_UP_DETECT:
-		gesture->gesture_type = FRINGER_PRINTUP;
+		gesture->gesture_type = FINGER_PRINTUP;
 		chip_info->fp_coor_report.fp_x_coor = (doze_buf[4] & 0xFF) |
 						      (doze_buf[5] & 0x0F) << 8;
 		chip_info->fp_coor_report.fp_y_coor = (doze_buf[6] & 0xFF) |
