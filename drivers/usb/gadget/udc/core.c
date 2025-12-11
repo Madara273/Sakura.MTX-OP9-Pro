@@ -653,6 +653,8 @@ out:
 }
 EXPORT_SYMBOL_GPL(usb_gadget_vbus_disconnect);
 
+extern int deny_new_usb;
+
 /**
  * usb_gadget_connect - software-controlled connect to USB host
  * @gadget:the peripheral being connected
@@ -670,6 +672,12 @@ int usb_gadget_connect(struct usb_gadget *gadget)
 
 	if (!gadget->ops->pullup) {
 		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
+	if (deny_new_usb) {
+		dev_err(&gadget->dev, "blocked USB gadget connection\n");
+		ret = -EPERM;
 		goto out;
 	}
 
