@@ -230,6 +230,17 @@ static inline u32 cred_sid(const struct cred *cred)
 }
 
 /*
+ * get the subjective security ID of the current task
+ */
+u32 current_sid(void)
+{
+	const struct task_security_struct *tsec = selinux_cred(current_cred());
+
+	return tsec->sid;
+}
+EXPORT_SYMBOL(current_sid);
+
+/*
  * get the objective security ID of a task
  */
 static inline u32 task_sid(const struct task_struct *task)
