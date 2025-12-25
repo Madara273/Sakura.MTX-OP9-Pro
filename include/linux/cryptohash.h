@@ -9,9 +9,18 @@
  * You shouldn't be using SHA-1, and even if you *have* to use SHA-1, this isn't
  * the correct way to hash something with SHA-1 (use crypto_shash instead).
  */
+#ifndef SHA1_DIGEST_WORDS
 #define SHA1_DIGEST_WORDS 5
+#endif
+
+#ifndef SHA1_BLOCK_SIZE
 #define SHA1_BLOCK_SIZE 64
+#endif
+
+#ifndef SHA1_WORKSPACE_WORDS
 #define SHA1_WORKSPACE_WORDS 16
+#endif
+
 void sha1_init(__u32 *buf);
 void sha1_transform(__u32 *digest, const char *data, __u32 *W);
 
