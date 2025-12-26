@@ -1967,18 +1967,18 @@ static ssize_t proc_fastchg_fw_update_read(struct file *file, char __user *buff,
 }
 
 
-static const struct file_operations fastchg_fw_update_proc_fops = {
-	.write = proc_fastchg_fw_update_write,
-	.read  = proc_fastchg_fw_update_read,
+static const struct proc_ops fastchg_fw_update_proc_ops = {
+	.proc_write = proc_fastchg_fw_update_write,
+	.proc_read  = proc_fastchg_fw_update_read,
 };
 
 static int init_proc_fastchg_fw_update(struct oplus_warp_chip *chip)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create_data("fastchg_fw_update", 0664, NULL, &fastchg_fw_update_proc_fops,chip);
+	p = proc_create_data("fastchg_fw_update", 0664, NULL, &fastchg_fw_update_proc_ops,chip);
 	if (!p) {
-		pr_err("proc_create fastchg_fw_update_proc_fops fail!\n");
+		pr_err("proc_create fastchg_fw_update_proc_ops fail!\n");
 	}
 	return 0;
 }

@@ -779,12 +779,12 @@ static ssize_t sensor_list_read_proc(struct file *file, char __user *buf,
 	return len;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
-static const struct proc_ops sensor_list_fops = {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static const struct proc_ops sensor_list_ops = {
         .proc_read = sensor_list_read_proc,
 };
 #else
-static struct file_operations sensor_list_fops = {
+static struct file_operations sensor_list_ops = {
 	.owner = THIS_MODULE,
 	.read = sensor_list_read_proc,
 };
@@ -880,7 +880,7 @@ static int create_sensor_node(struct sensor_fb_cxt *sensor_fb_cxt) {
 	}
 
 	pentry = proc_create_data("sensor_list", 0666, sensor_fb_cxt->proc_sns,
-			&sensor_list_fops, sensor_fb_cxt);
+			&sensor_list_ops, sensor_fb_cxt);
 	if (!pentry) {
 		pr_err("create sensor_list proc failed.\n");
 		err = -EFAULT;

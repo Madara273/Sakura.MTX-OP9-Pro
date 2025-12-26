@@ -74,7 +74,7 @@ static ssize_t proc_sim_detect_read(struct file *file,
 	return ret;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
 static const struct proc_ops sim_detect_ops = {
 	.proc_read  = proc_sim_detect_read,
 	.proc_open  = simple_open,

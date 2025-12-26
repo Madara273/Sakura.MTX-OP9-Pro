@@ -373,63 +373,64 @@ static ssize_t row_coe_write_proc(struct file *file, const char __user *buf,
 
     return count;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
-static const struct proc_ops row_coe_fops = {
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static const struct proc_ops row_coe_ops = {
         .proc_read = row_coe_read_proc,
         .proc_write = row_coe_write_proc,
 };
 
-static const struct proc_ops red_max_lux_fops = {
+static const struct proc_ops red_max_lux_ops = {
         .proc_read = red_max_lux_read_proc,
         .proc_write = red_max_lux_write_proc,
 };
 
-static const struct proc_ops white_max_lux_fops = {
+static const struct proc_ops white_max_lux_ops = {
         .proc_read = white_max_lux_read_proc,
         .proc_write = white_max_lux_write_proc,
 };
 
-static const struct proc_ops blue_max_lux_fops = {
+static const struct proc_ops blue_max_lux_ops = {
         .proc_read = blue_max_lux_read_proc,
         .proc_write = blue_max_lux_write_proc,
 };
 
-static const struct proc_ops green_max_lux_fops = {
+static const struct proc_ops green_max_lux_ops = {
         .proc_read = green_max_lux_read_proc,
         .proc_write = green_max_lux_write_proc,
 };
 
-static const struct proc_ops cali_coe_fops = {
+static const struct proc_ops cali_coe_ops = {
         .proc_read = cali_coe_read_proc,
         .proc_write = cali_coe_write_proc,
 };
 #else
-static struct file_operations row_coe_fops = {
+static struct file_operations row_coe_ops = {
         .read = row_coe_read_proc,
         .write = row_coe_write_proc,
 };
 
-static struct file_operations red_max_lux_fops = {
+static struct file_operations red_max_lux_ops = {
         .read = red_max_lux_read_proc,
         .write = red_max_lux_write_proc,
 };
 
-static struct file_operations white_max_lux_fops = {
+static struct file_operations white_max_lux_ops = {
         .read = white_max_lux_read_proc,
         .write = white_max_lux_write_proc,
 };
 
-static struct file_operations blue_max_lux_fops = {
+static struct file_operations blue_max_lux_ops = {
         .read = blue_max_lux_read_proc,
         .write = blue_max_lux_write_proc,
 };
 
-static struct file_operations green_max_lux_fops = {
+static struct file_operations green_max_lux_ops = {
         .read = green_max_lux_read_proc,
         .write = green_max_lux_write_proc,
 };
 
-static struct file_operations cali_coe_fops = {
+static struct file_operations cali_coe_ops = {
         .read = cali_coe_read_proc,
         .write = cali_coe_write_proc,
 };
@@ -474,7 +475,7 @@ int pad_als_data_init(void)
 
     //red_max_lux
     pentry = proc_create("red_max_lux", 0666, gdata->proc_pad_als,
-            &red_max_lux_fops);
+            &red_max_lux_ops);
     if (!pentry) {
         pr_err("create red_max_lux proc failed.\n");
         rc = -EFAULT;
@@ -483,7 +484,7 @@ int pad_als_data_init(void)
 
     //green_max_lux
     pentry = proc_create("green_max_lux", 0666, gdata->proc_pad_als,
-            &green_max_lux_fops);
+            &green_max_lux_ops);
     if (!pentry) {
         pr_err("create green_max_lux proc failed.\n");
         rc = -EFAULT;
@@ -492,7 +493,7 @@ int pad_als_data_init(void)
 
     //blue_max_lux
     pentry = proc_create("blue_max_lux", 0666, gdata->proc_pad_als,
-            &blue_max_lux_fops);
+            &blue_max_lux_ops);
     if (!pentry) {
         pr_err("create blue_max_lux proc failed.\n");
         rc = -EFAULT;
@@ -501,7 +502,7 @@ int pad_als_data_init(void)
 
     //white_max_lux
     pentry = proc_create("white_max_lux", 0666, gdata->proc_pad_als,
-            &white_max_lux_fops);
+            &white_max_lux_ops);
     if (!pentry) {
         pr_err("create white_max_lux proc failed.\n");
         rc = -EFAULT;
@@ -510,7 +511,7 @@ int pad_als_data_init(void)
 
     //cali_coe
     pentry = proc_create("cali_coe", 0666, gdata->proc_pad_als,
-            &cali_coe_fops);
+            &cali_coe_ops);
     if (!pentry) {
         pr_err("create cali_coe proc failed.\n");
         rc = -EFAULT;
@@ -519,7 +520,7 @@ int pad_als_data_init(void)
 
     //row_coe
     pentry = proc_create("row_coe", 0666, gdata->proc_pad_als,
-            &row_coe_fops);
+            &row_coe_ops);
     if (!pentry) {
         pr_err("create row_coe proc failed.\n");
         rc = -EFAULT;
