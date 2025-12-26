@@ -4085,9 +4085,9 @@ static ssize_t wcd_codec_exist_write(struct file *p_file,
 	return 0;
 }
 
-static const struct file_operations wcd_codec_exist_operations = {
-	.read = wcd_codec_exist_read,
-	.write = wcd_codec_exist_write,
+static const struct proc_ops wcd_codec_exist_operations = {
+	.proc_read = wcd_codec_exist_read,
+	.proc_write = wcd_codec_exist_write,
 };
 #endif /* OPLUS_FEATURE_AUDIO_FTM */
 
