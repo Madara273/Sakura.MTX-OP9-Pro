@@ -500,11 +500,11 @@ static ssize_t kernel_debug_write(struct file *f, const char __user *buf,
 	return 0;
 }
 
-static const struct file_operations tfa98xx_debug_ops =
+static const struct proc_ops tfa98xx_debug_ops =
 {
-	.open = kernel_debug_open,
-	.read = kernel_debug_read,
-	.write = kernel_debug_write,
+	.proc_open = kernel_debug_open,
+	.proc_read = kernel_debug_read,
+	.proc_write = kernel_debug_write,
 };
 #endif /* OPLUS_ARCH_EXTENDS */
 
@@ -1870,108 +1870,108 @@ r_c_err:
 }
 #endif
 #ifndef OPLUS_ARCH_EXTENDS
-DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_calib_otc_fops, tfa98xx_dbgfs_otc_get,
+DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_calib_otc_ops, tfa98xx_dbgfs_otc_get,
 						tfa98xx_dbgfs_otc_set, "%llu\n");
 #else
-static const struct file_operations tfa98xx_dbgfs_calib_otc_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_otc_get,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_calib_otc_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_otc_get,
+	.proc_lseek = default_llseek,
 };
 #endif
 #ifndef OPLUS_ARCH_EXTENDS
-DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_calib_mtpex_fops, tfa98xx_dbgfs_mtpex_get,
+DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_calib_mtpex_ops, tfa98xx_dbgfs_mtpex_get,
 						tfa98xx_dbgfs_mtpex_set, "%llu\n");
 #else
-static const struct file_operations tfa98xx_dbgfs_calib_mtpex_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_mtpex_get,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_calib_mtpex_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_mtpex_get,
+	.proc_lseek = default_llseek,
 };
 #endif /* OPLUS_ARCH_EXTENDS */
 #ifndef OPLUS_ARCH_EXTENDS
-DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_calib_temp_fops, tfa98xx_dbgfs_temp_get,
+DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_calib_temp_ops, tfa98xx_dbgfs_temp_get,
 						tfa98xx_dbgfs_temp_set, "%llu\n");
 #else
-static const struct file_operations tfa98xx_dbgfs_calib_temp_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_temp_get,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_calib_temp_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_temp_get,
+	.proc_lseek = default_llseek,
 };
 
 #endif
 #ifndef OPLUS_ARCH_EXTENDS
-DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_pga_gain_fops, tfa98xx_dbgfs_pga_gain_get,
+DEFINE_SIMPLE_ATTRIBUTE(tfa98xx_dbgfs_pga_gain_ops, tfa98xx_dbgfs_pga_gain_get,
 						tfa98xx_dbgfs_pga_gain_set, "%llu\n");
 #else
-static const struct file_operations tfa98xx_dbgfs_pga_gain_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_pga_gain_get,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_pga_gain_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_pga_gain_get,
+	.proc_lseek = default_llseek,
 };
 #endif
 
-static const struct file_operations tfa98xx_dbgfs_calib_start_fops = {
-	.open = simple_open,
-	.write = tfa98xx_dbgfs_start_set,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_calib_start_ops = {
+	.proc_open = simple_open,
+	.proc_write = tfa98xx_dbgfs_start_set,
+	.proc_lseek = default_llseek,
 };
 
-static const struct file_operations tfa98xx_dbgfs_r_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_r_read,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_r_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_r_read,
+	.proc_lseek = default_llseek,
 };
 
 #ifdef OPLUS_ARCH_EXTENDS
-static const struct file_operations tfa98xx_dbgfs_range_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_range_read,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_range_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_range_read,
+	.proc_lseek = default_llseek,
 };
-static const struct file_operations tfa98xx_dbgfs_r_aging_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_r_aging_read,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_r_aging_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_r_aging_read,
+	.proc_lseek = default_llseek,
 };
-static const struct file_operations tfa98xx_dbgfs_r_impedance_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_r_impedance_read,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_r_impedance_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_r_impedance_read,
+	.proc_lseek = default_llseek,
 };
 #endif /* OPLUS_ARCH_EXTENDS */
 
-static const struct file_operations tfa98xx_dbgfs_version_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_version_read,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_version_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_version_read,
+	.proc_lseek = default_llseek,
 };
 
-static const struct file_operations tfa98xx_dbgfs_dsp_state_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_dsp_state_get,
-	.write = tfa98xx_dbgfs_dsp_state_set,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_dsp_state_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_dsp_state_get,
+	.proc_write = tfa98xx_dbgfs_dsp_state_set,
+	.proc_lseek = default_llseek,
 };
 
-static const struct file_operations tfa98xx_dbgfs_fw_state_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_fw_state_get,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_fw_state_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_fw_state_get,
+	.proc_lseek = default_llseek,
 };
 
-static const struct file_operations tfa98xx_dbgfs_rpc_fops = {
-	.open = simple_open,
-	.read = tfa98xx_dbgfs_rpc_read,
-	.write = tfa98xx_dbgfs_rpc_send,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_dbgfs_rpc_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_dbgfs_rpc_read,
+	.proc_write = tfa98xx_dbgfs_rpc_send,
+	.proc_lseek = default_llseek,
 };
 
 #ifdef OPLUS_FEATURE_AUDIO_FTM
-static const struct file_operations tfa98xx_selfcheck_fops = {
-	.open = simple_open,
-	.read = tfa98xx_selfcheck_read,
-	.llseek = default_llseek,
+static const struct proc_ops tfa98xx_selfcheck_ops = {
+	.proc_open = simple_open,
+	.proc_read = tfa98xx_selfcheck_read,
+	.proc_lseek = default_llseek,
 };
 #endif /* OPLUS_FEATURE_AUDIO_FTM */
 
@@ -1983,76 +1983,76 @@ static void tfa98xx_debug_init(struct tfa98xx *tfa98xx, struct i2c_client *i2c)
 #ifdef CONFIG_DEBUG_FS
 	tfa98xx->dbg_dir = debugfs_create_dir(name, NULL);
 	debugfs_create_file("OTC", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_calib_otc_fops);
+						i2c, &tfa98xx_dbgfs_calib_otc_ops);
 	debugfs_create_file("MTPEX", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_calib_mtpex_fops);
+						i2c, &tfa98xx_dbgfs_calib_mtpex_ops);
 	debugfs_create_file("TEMP", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_calib_temp_fops);
+						i2c, &tfa98xx_dbgfs_calib_temp_ops);
 	debugfs_create_file("calibrate", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_calib_start_fops);
+						i2c, &tfa98xx_dbgfs_calib_start_ops);
 	debugfs_create_file("R", S_IRUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_r_fops);
+						i2c, &tfa98xx_dbgfs_r_ops);
 	#ifdef OPLUS_ARCH_EXTENDS
 	debugfs_create_file("range", S_IRUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_range_fops);
+						i2c, &tfa98xx_dbgfs_range_ops);
 	debugfs_create_file("r_aging", S_IRUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_r_aging_fops);
+						i2c, &tfa98xx_dbgfs_r_aging_ops);
 	debugfs_create_file("r_impedance", S_IRUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_r_impedance_fops);
+						i2c, &tfa98xx_dbgfs_r_impedance_ops);
 	#endif /* OPLUS_ARCH_EXTENDS */
 	debugfs_create_file("version", S_IRUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_version_fops);
+						i2c, &tfa98xx_dbgfs_version_ops);
 	debugfs_create_file("dsp-state", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_dsp_state_fops);
+						i2c, &tfa98xx_dbgfs_dsp_state_ops);
 	debugfs_create_file("fw-state", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_fw_state_fops);
+						i2c, &tfa98xx_dbgfs_fw_state_ops);
 	debugfs_create_file("rpc", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-						i2c, &tfa98xx_dbgfs_rpc_fops);
+						i2c, &tfa98xx_dbgfs_rpc_ops);
 
 	if (tfa98xx->flags & TFA98XX_FLAG_SAAM_AVAILABLE) {
 		dev_dbg(tfa98xx->dev, "Adding pga_gain debug interface\n");
 		debugfs_create_file("pga_gain", S_IRUGO, tfa98xx->dbg_dir,
 						tfa98xx->i2c,
-						&tfa98xx_dbgfs_pga_gain_fops);
+						&tfa98xx_dbgfs_pga_gain_ops);
 	}
 #else /*CONFIG_DEBUG_FS*/
 	tfa98xx->dbg_dir = proc_mkdir(name, NULL);
 	proc_create_data("OTC", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_calib_otc_fops, i2c);
+					&tfa98xx_dbgfs_calib_otc_ops, i2c);
 	proc_create_data("MTPEX", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_calib_mtpex_fops, i2c);
+					&tfa98xx_dbgfs_calib_mtpex_ops, i2c);
 	proc_create_data("TEMP", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_calib_temp_fops, i2c);
+					&tfa98xx_dbgfs_calib_temp_ops, i2c);
 	proc_create_data("calibrate", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_calib_start_fops, i2c);
+					&tfa98xx_dbgfs_calib_start_ops, i2c);
 	proc_create_data("R", S_IRUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_r_fops, i2c);
+					&tfa98xx_dbgfs_r_ops, i2c);
 	#ifdef OPLUS_ARCH_EXTENDS
 	proc_create_data("range", S_IRUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_range_fops, i2c);
+					&tfa98xx_dbgfs_range_ops, i2c);
 	proc_create_data("r_aging", S_IRUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_r_aging_fops, i2c);
+					&tfa98xx_dbgfs_r_aging_ops, i2c);
 	proc_create_data("r_impedance", S_IRUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_r_impedance_fops, i2c);
+					&tfa98xx_dbgfs_r_impedance_ops, i2c);
 	#endif /* OPLUS_ARCH_EXTENDS */
 	proc_create_data("version", S_IRUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_version_fops, i2c);
+					&tfa98xx_dbgfs_version_ops, i2c);
 	proc_create_data("dsp-state", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_dsp_state_fops, i2c);
+					&tfa98xx_dbgfs_dsp_state_ops, i2c);
 	proc_create_data("fw-state", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_fw_state_fops, i2c);
+					&tfa98xx_dbgfs_fw_state_ops, i2c);
 	proc_create_data("rpc", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_dbgfs_rpc_fops, i2c);
+					&tfa98xx_dbgfs_rpc_ops, i2c);
 
 	#ifdef OPLUS_FEATURE_AUDIO_FTM
 	proc_create_data("selfcheck", S_IRUGO|S_IWUGO, tfa98xx->dbg_dir,
-					&tfa98xx_selfcheck_fops, i2c);
+					&tfa98xx_selfcheck_ops, i2c);
 	#endif /* OPLUS_FEATURE_AUDIO_FTM */
 
 	if (tfa98xx->flags & TFA98XX_FLAG_SAAM_AVAILABLE) {
 		dev_dbg(tfa98xx->dev, "Adding pga_gain debug interface\n");
 		proc_create_data("pga_gain", S_IRUGO, tfa98xx->dbg_dir,
-						&tfa98xx_dbgfs_pga_gain_fops,
+						&tfa98xx_dbgfs_pga_gain_ops,
 						tfa98xx->i2c);
 	}
 #endif/*CONFIG_DEBUG_FS*/
