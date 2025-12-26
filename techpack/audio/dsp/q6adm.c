@@ -6401,10 +6401,10 @@ static ssize_t pb_det_read(struct file *file,
 	return ret;
 }
 
-static const struct file_operations pb_det_ops = {
-	.open = simple_open,
-	.read = pb_det_read,
-	.llseek = default_llseek,
+static const struct proc_ops pb_det_ops = {
+	.proc_open = simple_open,
+	.proc_read = pb_det_read,
+	.proc_lseek = default_llseek,
 };
 
 static ssize_t rec_det_read(struct file *file,
@@ -6433,10 +6433,10 @@ static ssize_t rec_det_read(struct file *file,
 	return ret;
 }
 
-static const struct file_operations rec_det_ops = {
-	.open = simple_open,
-	.read = rec_det_read,
-	.llseek = default_llseek,
+static const struct proc_ops rec_det_ops = {
+	.proc_open = simple_open,
+	.proc_read = rec_det_read,
+	.proc_lseek = default_llseek,
 };
 
 static ssize_t voip_det_read(struct file *file,
@@ -6470,10 +6470,10 @@ static ssize_t voip_det_read(struct file *file,
 	return ret;
 }
 
-static const struct file_operations voip_det_ops = {
-	.open = simple_open,
-	.read = voip_det_read,
-	.llseek = default_llseek,
+static const struct proc_ops voip_det_ops = {
+	.proc_open = simple_open,
+	.proc_read = voip_det_read,
+	.proc_lseek = default_llseek,
 };
 
 static ssize_t voice_det_read(struct file *file,
@@ -6505,10 +6505,10 @@ static ssize_t voice_det_read(struct file *file,
 	return ret;
 }
 
-static const struct file_operations voice_det_ops = {
-	.open = simple_open,
-	.read = voice_det_read,
-	.llseek = default_llseek,
+static const struct proc_ops voice_det_ops = {
+	.proc_open = simple_open,
+	.proc_read = voice_det_read,
+	.proc_lseek = default_llseek,
 };
 #endif /* OPLUS_FEATURE_AUDIODETECT */
 
