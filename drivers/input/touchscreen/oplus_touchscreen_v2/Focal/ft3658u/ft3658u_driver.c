@@ -269,13 +269,17 @@ proc_read_err:
 	return ret;
 }
 
-DECLARE_PROC_OPS(fts_proc_fops, simple_open, fts_debug_read, fts_debug_write, NULL);
+static const struct proc_ops fts_proc_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= fts_debug_read,
+	.proc_write	= fts_debug_write,
+};
 
 static int fts_create_apk_debug_channel(struct chip_data_ft3658u *ts_data)
 {
 	struct ftxxxx_proc *proc = &ts_data->proc;
 
-	proc->proc_entry = proc_create_data(PROC_NAME, 0777, NULL, &fts_proc_fops, ts_data);
+	proc->proc_entry = proc_create_data(PROC_NAME, 0777, NULL, &fts_proc_ops, ts_data);
 	if (NULL == proc->proc_entry) {
 		TPD_INFO("create proc entry fail");
 		return -ENOMEM;
@@ -528,14 +532,14 @@ static int fts_auto_test_entry(struct seq_file *s, void *v)
 	return 0;
 }
 
-DECLARE_PROC_OPS(fts_auto_test_proc_fops, fts_baseline_autotest_open, seq_read, NULL, single_release);
+DECLARE_PROC_OPS(fts_auto_test_proc_ops, fts_baseline_autotest_open, seq_read, NULL, single_release);
 
 static int fts_create_proc_baseline_test(struct touchpanel_data *ts)
 {
 	int ret = 0;
 	struct proc_dir_entry *prEntry_tmp = NULL;
 
-	prEntry_tmp = proc_create_data("baseline_test", 0666, ts->prEntry_tp, &fts_auto_test_proc_fops, ts);
+	prEntry_tmp = proc_create_data("baseline_test", 0666, ts->prEntry_tp, &fts_auto_test_proc_ops, ts);
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
 		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__);
@@ -2476,7 +2480,7 @@ static int fts3658u_tp_probe(struct i2c_client * client,
 	ts->dev = &client->dev;
 	ts->chip_data = ts_data;
 
-	/*step4:file_operations callback binding*/
+	/*step4:proc_ops callback binding*/
 	ts->ts_ops = &fts_ops;
 #ifdef FTS_KIT
 	ts_data->auto_test_ops = &ft3658u_test_ops;

@@ -195,11 +195,10 @@ static int record_open(struct inode *inode, struct file *file)
 	return single_open(file, record_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations record_fops = {
-	.owner = THIS_MODULE,
-	.open = record_open,
-	.read = seq_read,
-	.release = single_release,
+static const struct proc_ops record_ops = {
+	.proc_open = record_open,
+	.proc_read = seq_read,
+	.proc_release = single_release,
 };
 
 #define SEQ_UPLOAD_PRINT(x) \
@@ -241,11 +240,10 @@ static int record_upload_open(struct inode *inode, struct file *file)
 	return single_open(file, record_upload_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations record_upload_fops = {
-	.owner = THIS_MODULE,
-	.open = record_upload_open,
-	.read = seq_read,
-	.release = single_release,
+static const struct proc_ops record_upload_ops = {
+	.proc_open = record_upload_open,
+	.proc_read = seq_read,
+	.proc_release = single_release,
 };
 
 int create_signal_quality_proc(struct unipro_signal_quality_ctrl *signalCtrl)
@@ -256,12 +254,12 @@ int create_signal_quality_proc(struct unipro_signal_quality_ctrl *signalCtrl)
 		return -ENOMEM;
 	}
 	d_entry = proc_create_data("record", S_IRUGO, signalCtrl->ctrl_dir,
-	        &record_fops, signalCtrl);
+	        &record_ops, signalCtrl);
 	if (!d_entry) {
 		return -ENOMEM;
 	}
 	d_entry = proc_create_data("record_upload", S_IRUGO, signalCtrl->ctrl_dir,
-	        &record_upload_fops, signalCtrl);
+	        &record_upload_ops, signalCtrl);
 	if (!d_entry) {
 		return -ENOMEM;
 	}

@@ -179,8 +179,8 @@ static ssize_t cable_read_proc(struct file *file, char __user *buf, size_t count
 }
 
 
-static struct file_operations cable_proc_fops_cable = {
-    .read = cable_read_proc,
+static struct proc_ops cable_proc_fops_cable = {
+    .proc_read = cable_read_proc,
 };
 
 int create_rf_cable_procfs(void)

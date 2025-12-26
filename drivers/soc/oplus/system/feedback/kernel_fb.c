@@ -513,11 +513,10 @@ static ssize_t kernel_fb_read(struct file *file,
 	return count;
 }
 
-static const struct file_operations kern_fb_fops = {
-	.write = kernel_fb_write,
-	.read  = kernel_fb_read,
-	.open  = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops kern_fb_ops = {
+	.proc_write = kernel_fb_write,
+	.proc_read  = kernel_fb_read,
+	.proc_open  = simple_open,
 };
 
 static ssize_t crash_cause_read(struct file *file,
@@ -533,10 +532,9 @@ static ssize_t crash_cause_read(struct file *file,
 	return len;
 }
 
-static const struct file_operations crash_cause_fops = {
-	.read  = crash_cause_read,
-    .open  = simple_open,
-    .owner = THIS_MODULE,
+static const struct proc_ops crash_cause_ops = {
+	.proc_read  = crash_cause_read,
+	.proc_open  = simple_open,
 };
 
 static int __init kernel_fb_init(void)
@@ -574,14 +572,14 @@ static int __init kernel_fb_init(void)
 
 	g_pkts->wlock_init = true;
 
-	d_entry = proc_create_data("kern_fb", 0664, NULL, &kern_fb_fops, NULL);
+	d_entry = proc_create_data("kern_fb", 0664, NULL, &kern_fb_ops, NULL);
 	if (!d_entry) {
 		pr_err("failed to create kern_fb node\n");
 		ret = -ENODEV;
 		goto failed_proc_create_data;
 	}
 
-	d_entry = proc_create_data("crash_cause", 0664, NULL, &crash_cause_fops, NULL);
+	d_entry = proc_create_data("crash_cause", 0664, NULL, &crash_cause_ops, NULL);
 
 	if (!d_entry) {
 		pr_err("failed to create crash_cause node\n");

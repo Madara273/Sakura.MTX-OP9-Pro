@@ -172,12 +172,12 @@ static ssize_t pds_read_proc(struct file *file, char __user *buf, size_t count, 
     return (len < count ? len : count);
 }
 
-struct file_operations cable_proc_fops_cable = {
-    .read = cable_read_proc,
+struct proc_ops cable_proc_fops_cable = {
+    .proc_read = cable_read_proc,
 };
 
-struct file_operations cable_proc_fops_pds = {
-    .read = pds_read_proc,
+struct proc_ops cable_proc_fops_pds = {
+    .proc_read = pds_read_proc,
 };
 
 //=====================================

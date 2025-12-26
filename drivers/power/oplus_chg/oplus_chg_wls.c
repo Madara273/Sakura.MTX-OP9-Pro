@@ -6410,11 +6410,10 @@ static ssize_t oplus_chg_wls_proc_deviated_read(struct file *file,
 	return ret;
 }
 
-static const struct file_operations oplus_chg_wls_proc_deviated_ops = {
-	.read = oplus_chg_wls_proc_deviated_read,
-	.write = NULL,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_deviated_ops = {
+	.proc_read = oplus_chg_wls_proc_deviated_read,
+	.proc_write = NULL,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_tx_read(struct file *file, char __user *buf,
@@ -6510,11 +6509,10 @@ static ssize_t oplus_chg_wls_proc_tx_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations oplus_chg_wls_proc_tx_ops = {
-	.read = oplus_chg_wls_proc_tx_read,
-	.write = oplus_chg_wls_proc_tx_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_tx_ops = {
+	.proc_read = oplus_chg_wls_proc_tx_read,
+	.proc_write = oplus_chg_wls_proc_tx_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_rx_read(struct file *file, char __user *buf,
@@ -6573,11 +6571,10 @@ static ssize_t oplus_chg_wls_proc_rx_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations oplus_chg_wls_proc_rx_ops = {
-	.read = oplus_chg_wls_proc_rx_read,
-	.write = oplus_chg_wls_proc_rx_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_rx_ops = {
+	.proc_read = oplus_chg_wls_proc_rx_read,
+	.proc_write = oplus_chg_wls_proc_rx_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_user_sleep_mode_read(struct file *file,
@@ -6674,11 +6671,10 @@ static ssize_t oplus_chg_wls_proc_user_sleep_mode_write(struct file *file,
 	return len;
 }
 
-static const struct file_operations oplus_chg_wls_proc_user_sleep_mode_ops = {
-	.read = oplus_chg_wls_proc_user_sleep_mode_read,
-	.write = oplus_chg_wls_proc_user_sleep_mode_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_user_sleep_mode_ops = {
+	.proc_read = oplus_chg_wls_proc_user_sleep_mode_read,
+	.proc_write = oplus_chg_wls_proc_user_sleep_mode_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_idt_adc_test_read(struct file *file,
@@ -6749,11 +6745,10 @@ static ssize_t oplus_chg_wls_proc_idt_adc_test_write(struct file *file,
 	return len;
 }
 
-static const struct file_operations oplus_chg_wls_proc_idt_adc_test_ops = {
-	.read = oplus_chg_wls_proc_idt_adc_test_read,
-	.write = oplus_chg_wls_proc_idt_adc_test_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_idt_adc_test_ops = {
+	.proc_read = oplus_chg_wls_proc_idt_adc_test_read,
+	.proc_write = oplus_chg_wls_proc_idt_adc_test_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_rx_power_read(struct file *file,
@@ -6788,11 +6783,10 @@ static ssize_t oplus_chg_wls_proc_rx_power_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations oplus_chg_wls_proc_rx_power_ops = {
-	.read = oplus_chg_wls_proc_rx_power_read,
-	.write = oplus_chg_wls_proc_rx_power_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_rx_power_ops = {
+	.proc_read = oplus_chg_wls_proc_rx_power_read,
+	.proc_write = oplus_chg_wls_proc_rx_power_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_tx_power_read(struct file *file,
@@ -6827,11 +6821,10 @@ static ssize_t oplus_chg_wls_proc_tx_power_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations oplus_chg_wls_proc_tx_power_ops = {
-	.read = oplus_chg_wls_proc_tx_power_read,
-	.write = oplus_chg_wls_proc_tx_power_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_tx_power_ops = {
+	.proc_read = oplus_chg_wls_proc_tx_power_read,
+	.proc_write = oplus_chg_wls_proc_tx_power_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_rx_version_read(struct file *file,
@@ -6869,11 +6862,10 @@ static ssize_t oplus_chg_wls_proc_rx_version_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations oplus_chg_wls_proc_rx_version_ops = {
-	.read = oplus_chg_wls_proc_rx_version_read,
-	.write = oplus_chg_wls_proc_rx_version_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_rx_version_ops = {
+	.proc_read = oplus_chg_wls_proc_rx_version_read,
+	.proc_write = oplus_chg_wls_proc_rx_version_write,
+	.proc_open = simple_open,
 };
 
 static ssize_t oplus_chg_wls_proc_ftm_mode_read(struct file *file,
@@ -6943,11 +6935,10 @@ static ssize_t oplus_chg_wls_proc_ftm_mode_write(struct file *file,
 	return len;
 }
 
-static const struct file_operations oplus_chg_wls_proc_ftm_mode_ops = {
-	.read = oplus_chg_wls_proc_ftm_mode_read,
-	.write = oplus_chg_wls_proc_ftm_mode_write,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops oplus_chg_wls_proc_ftm_mode_ops = {
+	.proc_read = oplus_chg_wls_proc_ftm_mode_read,
+	.proc_write = oplus_chg_wls_proc_ftm_mode_write,
+	.proc_open = simple_open,
 };
 
 static int oplus_chg_wls_init_charge_proc(struct oplus_chg_wls *wls_dev)

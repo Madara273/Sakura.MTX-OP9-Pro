@@ -210,9 +210,9 @@ static ssize_t fp_id_node_write(struct file *file, const char __user *buf, size_
     return count;
 }
 
-static struct file_operations fp_id_node_ctrl = {
-    .read = fp_id_node_read,
-    .write = fp_id_node_write,
+static struct proc_ops fp_id_node_ctrl = {
+    .proc_read = fp_id_node_read,
+    .proc_write = fp_id_node_write,
 };
 
 void opticalfp_irq_handler_register(opticalfp_handler handler) {
@@ -390,9 +390,9 @@ static ssize_t lcd_type_node_read(struct file *file, char __user *buf, size_t co
     return len < count ? len  : count;
 }
 
-static struct file_operations lcd_type_node_ctrl = {
-    .read = lcd_type_node_read,
-    .write = NULL,
+static struct proc_ops lcd_type_node_ctrl = {
+    .proc_read = lcd_type_node_read,
+    .proc_write = NULL,
 };
 
 

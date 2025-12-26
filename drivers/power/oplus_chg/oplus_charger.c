@@ -1132,16 +1132,16 @@ static ssize_t proc_batt_param_noplug_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-static const struct file_operations batt_param_noplug_proc_fops = {
-	.write = proc_batt_param_noplug_write,
-	.read = proc_batt_param_noplug_read,
+static const struct proc_ops batt_param_noplug_proc_ops = {
+	.proc_write = proc_batt_param_noplug_write,
+	.proc_read = proc_batt_param_noplug_read,
 };
 
 static int init_proc_batt_param_noplug(void)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create("batt_param_noplug", 0664, NULL, &batt_param_noplug_proc_fops);
+	p = proc_create("batt_param_noplug", 0664, NULL, &batt_param_noplug_proc_ops);
 	if (!p) {
 		chg_err("proc_create  fail!\n");
 	}
@@ -1196,16 +1196,16 @@ static ssize_t proc_tbatt_pwroff_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-static const struct file_operations tbatt_pwroff_proc_fops = {
-	.write = proc_tbatt_pwroff_write,
-	.read = proc_tbatt_pwroff_read,
+static const struct proc_ops tbatt_pwroff_proc_ops = {
+	.proc_write = proc_tbatt_pwroff_write,
+	.proc_read = proc_tbatt_pwroff_read,
 };
 
 static int init_proc_tbatt_pwroff(void)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create("tbatt_pwroff", 0664, NULL, &tbatt_pwroff_proc_fops);
+	p = proc_create("tbatt_pwroff", 0664, NULL, &tbatt_pwroff_proc_ops);
 	if (!p) {
 		chg_err("proc_create  fail!\n");
 	}
@@ -1265,18 +1265,18 @@ static ssize_t chg_log_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-static const struct file_operations chg_log_proc_fops = {
-	.write = chg_log_write,
-	.read = chg_log_read,
+static const struct proc_ops chg_log_proc_ops = {
+	.proc_write = chg_log_write,
+	.proc_read = chg_log_read,
 };
 
 static int init_proc_chg_log(void)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create("charger_log", 0664, NULL, &chg_log_proc_fops);
+	p = proc_create("charger_log", 0664, NULL, &chg_log_proc_ops);
 	if (!p) {
-		chg_err("proc_create chg_log_proc_fops fail!\n");
+		chg_err("proc_create chg_log_proc_ops fail!\n");
 	}
 	return 0;
 }
@@ -1362,17 +1362,17 @@ static ssize_t chg_cycle_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations chg_cycle_proc_fops = {
-	.write = chg_cycle_write,
-	.llseek = noop_llseek,
+static const struct proc_ops chg_cycle_proc_ops = {
+	.proc_write = chg_cycle_write,
+	.proc_lseek = noop_llseek,
 };
 
 static void init_proc_chg_cycle(void)
 {
 	if (!proc_create("charger_cycle",
 			S_IWUSR | S_IWGRP | S_IWOTH,
-			NULL, &chg_cycle_proc_fops)) {
-		chg_err("proc_create chg_cycle_proc_fops fail!\n");
+			NULL, &chg_cycle_proc_ops)) {
+		chg_err("proc_create chg_cycle_proc_ops fail!\n");
 	}
 }
 static ssize_t critical_log_read(struct file *filp,
@@ -1428,9 +1428,9 @@ static ssize_t critical_log_write(struct file *filp,
 	return len;
 }
 
-static const struct file_operations chg_critical_log_proc_fops = {
-	.write = critical_log_write,
-	.read = critical_log_read,
+static const struct proc_ops chg_critical_log_proc_ops = {
+	.proc_write = critical_log_write,
+	.proc_read = critical_log_read,
 };
 
 static void init_proc_critical_log(void)
@@ -1438,9 +1438,9 @@ static void init_proc_critical_log(void)
 	struct proc_dir_entry *p = NULL;
 
 	p = proc_create("charger_critical_log", 0664, NULL,
-		&chg_critical_log_proc_fops);
+		&chg_critical_log_proc_ops);
 	if (!p) {
-		pr_err("proc_create chg_critical_log_proc_fops fail!\n");
+		pr_err("proc_create chg_critical_log_proc_ops fail!\n");
 	}
 }
 
@@ -1476,17 +1476,17 @@ static ssize_t rtc_reset_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-static const struct file_operations rtc_reset_det_fops = {
-	.read = rtc_reset_read,
+static const struct proc_ops rtc_reset_det_ops = {
+	.proc_read = rtc_reset_read,
 };
 
 static void init_proc_rtc_det(void)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create("rtc_reset", 0664, NULL, &rtc_reset_det_fops);
+	p = proc_create("rtc_reset", 0664, NULL, &rtc_reset_det_ops);
 	if (!p) {
-		pr_err("proc_create rtc_reset_det_fops fail!\n");
+		pr_err("proc_create rtc_reset_det_ops fail!\n");
 	}
 }
 static ssize_t vbat_low_read(struct file *filp,
@@ -1517,17 +1517,17 @@ static ssize_t vbat_low_read(struct file *filp,
 }
 
 
-static const struct file_operations vbat_low_det_fops = {
-	.read = vbat_low_read,
+static const struct proc_ops vbat_low_det_ops = {
+	.proc_read = vbat_low_read,
 };
 
 static void init_proc_vbat_low_det(void)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create("vbat_low", 0664, NULL, &vbat_low_det_fops);
+	p = proc_create("vbat_low", 0664, NULL, &vbat_low_det_ops);
 	if (!p) {
-		pr_err("proc_create rtc_reset_det_fops fail!\n");
+		pr_err("proc_create rtc_reset_det_ops fail!\n");
 	}
 }
 
@@ -1626,11 +1626,10 @@ static ssize_t proc_charger_factorymode_test_write
 	return count;
 }
 
-static const struct file_operations proc_charger_factorymode_test_ops =
+static const struct proc_ops proc_charger_factorymode_test_ops =
 {
-    .write  = proc_charger_factorymode_test_write,
-    .open  = simple_open,
-    .owner = THIS_MODULE,
+    .proc_write  = proc_charger_factorymode_test_write,
+    .proc_open  = simple_open,
 };
 
 static ssize_t proc_hmac_write(struct file *filp,
@@ -1689,10 +1688,9 @@ static ssize_t proc_hmac_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-static const struct file_operations hmac_proc_fops = {
-	.write = proc_hmac_write,
-	.read = proc_hmac_read,
-	.owner = THIS_MODULE,
+static const struct proc_ops hmac_proc_ops = {
+	.proc_write = proc_hmac_write,
+	.proc_read = proc_hmac_read,
 };
 static ssize_t proc_charger_input_current_now_read(struct file *filp,
 		char __user *buff, size_t count, loff_t *off)
@@ -1772,22 +1770,19 @@ static ssize_t proc_charger_passedchg_reset_count_read(struct file *filp,
 	*off += len < count ? len : count;
 	return (len < count ? len : count);
 }
-static const struct file_operations proc_charger_input_current_now_ops =
+static const struct proc_ops proc_charger_input_current_now_ops =
 {
-	.read  = proc_charger_input_current_now_read,
-	.owner = THIS_MODULE,
+	.proc_read  = proc_charger_input_current_now_read,
 };
 
-static const struct file_operations proc_charger_passedchg_ops =
+static const struct proc_ops proc_charger_passedchg_ops =
 {
-	.read  = proc_charger_passedchg_read,
-	.owner = THIS_MODULE,
+	.proc_read  = proc_charger_passedchg_read,
 };
 
-static const struct file_operations proc_charger_passedchg_reset_count_ops =
+static const struct proc_ops proc_charger_passedchg_reset_count_ops =
 {
-	.read  = proc_charger_passedchg_reset_count_read,
-	.owner = THIS_MODULE,
+	.proc_read  = proc_charger_passedchg_reset_count_read,
 };
 
 #define PROC_READ_MAX_SIZE 32
@@ -1813,7 +1808,7 @@ static ssize_t proc_integrate_gauge_fcc_flag_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 static const struct file_operations proc_integrate_gauge_fcc_flag_ops =
 {
 	.read  = proc_integrate_gauge_fcc_flag_read,
@@ -1827,7 +1822,6 @@ static const struct proc_ops proc_integrate_gauge_fcc_flag_ops =
 	.proc_open  = simple_open,
 };
 #endif
-
 
 static int init_charger_proc(struct oplus_chg_chip *chip)
 {
@@ -1851,7 +1845,7 @@ static int init_charger_proc(struct oplus_chg_chip *chip)
 	}
 
 	prEntry_tmp = proc_create_data("hmac", 0666, prEntry_da,
-				       &hmac_proc_fops, chip);
+				       &hmac_proc_ops, chip);
 	if (prEntry_tmp == NULL) {
 		ret = -1;
 		chg_debug("%s: Couldn't create hmac proc entry, %d\n", __func__,
@@ -1963,11 +1957,10 @@ static ssize_t proc_ui_soc_decimal_read(struct file *filp,
 	return (len < count ? len : count);
 }
 
-static const struct file_operations ui_soc_decimal_ops =
+static const struct proc_ops ui_soc_decimal_ops =
 {
-    .write  = proc_ui_soc_decimal_write,
-    .read = proc_ui_soc_decimal_read,
-    .owner = THIS_MODULE,
+    .proc_write  = proc_ui_soc_decimal_write,
+    .proc_read = proc_ui_soc_decimal_read,
 };
 
 static int init_ui_soc_decimal_proc(struct oplus_chg_chip *chip)
@@ -2118,10 +2111,10 @@ static ssize_t charging_limit_time_write(struct file *filp,
 	return len;
 }
 
-static const struct file_operations charging_limit_time_fops = {
-	.open = charging_limit_time_open,
-	.write = charging_limit_time_write,
-	.read = seq_read,
+static const struct proc_ops charging_limit_time_ops = {
+	.proc_open = charging_limit_time_open,
+	.proc_write = charging_limit_time_write,
+	.proc_read = seq_read,
 };
 static int charging_limit_current_show(struct seq_file *seq_filp, void *v)
 {
@@ -2160,10 +2153,10 @@ static ssize_t charging_limit_current_write(struct file *filp,
 	return len;
 }
 
-static const struct file_operations charging_limit_current_fops = {
-	.open = charging_limit_current_open,
-	.write = charging_limit_current_write,
-	.read = seq_read,
+static const struct proc_ops charging_limit_current_ops = {
+	.proc_open = charging_limit_current_open,
+	.proc_write = charging_limit_current_write,
+	.proc_read = seq_read,
 };
 
 static void init_proc_charging_feature(void)
@@ -2172,14 +2165,14 @@ static void init_proc_charging_feature(void)
 	struct proc_dir_entry *p_current = NULL;
 
 	p_time = proc_create("charging_limit_time", 0664, NULL,
-			&charging_limit_time_fops);
+			&charging_limit_time_ops);
 	if (!p_time) {
-		pr_err("proc_create charging_feature_fops fail!\n");
+		pr_err("proc_create charging_feature_ops fail!\n");
 	}
 	p_current = proc_create("charging_limit_current", 0664, NULL,
-			&charging_limit_current_fops);
+			&charging_limit_current_ops);
 	if (!p_current) {
-		pr_err("proc_create charging_feature_fops fail!\n");
+		pr_err("proc_create charging_feature_ops fail!\n");
 	}
 }
 

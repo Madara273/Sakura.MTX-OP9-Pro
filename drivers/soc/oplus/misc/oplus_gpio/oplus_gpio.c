@@ -251,11 +251,11 @@ static int dual_sim_det_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, dual_sim_det_show, PDE_DATA(inode));
 }
 
-static const struct file_operations dual_sim_det_fops = {
-	.open = dual_sim_det_proc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops dual_sim_det_ops = {
+	.proc_open = dual_sim_det_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int dual_sim_det_init(struct platform_device *pdev, void *gpio_info_ptr)
@@ -339,7 +339,7 @@ static int dual_sim_det_init(struct platform_device *pdev, void *gpio_info_ptr)
 	OPLUS_GPIO_MSG("reset_pin = %d\n", det_info->reset_pin);
 
 	pentry = proc_create_data(gpio_info->dev_node_desc, 0644, NULL,
-			&dual_sim_det_fops, det_info);
+			&dual_sim_det_ops, det_info);
 
 	if (!pentry) {
 		OPLUS_GPIO_ERR("create proc file failed.\n");
@@ -512,7 +512,6 @@ static const struct file_operations oplus_gpio_fops = {
 	.open           = oplus_gpio_open,
 	.read           = oplus_gpio_read,
 };
-
 
 extern char *saved_command_line;
 static void init_esim_status(void)

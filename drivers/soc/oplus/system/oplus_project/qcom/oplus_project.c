@@ -604,11 +604,10 @@ static int projects_open(struct inode *inode, struct file *file)
     return single_open(file, project_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations project_info_fops = {
-    .owner = THIS_MODULE,
-    .open  = projects_open,
-    .read  = seq_read,
-    .release = single_release,
+static const struct proc_ops project_info_ops = {
+	.proc_open  = projects_open,
+	.proc_read  = seq_read,
+	.proc_release = single_release,
 };
 
 static int __init oplus_project_init(void)
@@ -619,64 +618,64 @@ static int __init oplus_project_init(void)
     if (!oplus_info) {
         goto error_init;
     }
-    
-    p_entry = proc_create_data("prjName", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(PROJECT_VERSION));
+
+    p_entry = proc_create_data("prjName", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(PROJECT_VERSION));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("pcbVersion", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(PCB_VERSION));
+    p_entry = proc_create_data("pcbVersion", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(PCB_VERSION));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("oplusBootmode", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(OPLUS_BOOTMODE));
+    p_entry = proc_create_data("oplusBootmode", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(OPLUS_BOOTMODE));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("RFType", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(RF_INFO));
+    p_entry = proc_create_data("RFType", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(RF_INFO));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("modemType", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(MODEM_TYPE));
+    p_entry = proc_create_data("modemType", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(MODEM_TYPE));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("operatorName", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(OPERATOR_NAME));
+    p_entry = proc_create_data("operatorName", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(OPERATOR_NAME));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("secureType", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(SECURE_TYPE));
+    p_entry = proc_create_data("secureType", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(SECURE_TYPE));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("secureStage", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(SECURE_STAGE));
+    p_entry = proc_create_data("secureStage", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(SECURE_STAGE));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("ocp", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(OCP_NUMBER));
+    p_entry = proc_create_data("ocp", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(OCP_NUMBER));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("serialID", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(SERIAL_NUMBER));
+    p_entry = proc_create_data("serialID", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(SERIAL_NUMBER));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("engVersion", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(ENG_VERSION));
+    p_entry = proc_create_data("engVersion", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(ENG_VERSION));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("isConfidential", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(CONFIDENTIAL_STATUS));
+    p_entry = proc_create_data("isConfidential", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(CONFIDENTIAL_STATUS));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("cdt", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(CDT_INTEGRITY));
+    p_entry = proc_create_data("cdt", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(CDT_INTEGRITY));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("feature", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(OPLUS_FEATURE));
+    p_entry = proc_create_data("feature", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(OPLUS_FEATURE));
     if (!p_entry)
         goto error_init;
 
-    p_entry = proc_create_data("test", S_IRUGO, oplus_info, &project_info_fops, UINT2Ptr(PROJECT_TEST));
+    p_entry = proc_create_data("test", S_IRUGO, oplus_info, &project_info_ops, UINT2Ptr(PROJECT_TEST));
     if (!p_entry)
         goto error_init;
 
