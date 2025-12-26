@@ -5423,8 +5423,8 @@ static ssize_t hpbfn_enable_write(struct file *filp, const char *ubuf,
 	return cnt;
 }
 
-static const struct file_operations hpbfn_enable_fops = {
-	.write = hpbfn_enable_write,
+static const struct proc_ops hpbfn_enable_ops = {
+	.proc_write = hpbfn_enable_write,
 };
 
 static int create_hpbfn_enable_proc(void)
@@ -5435,7 +5435,7 @@ static int create_hpbfn_enable_proc(void)
 		return -EFAULT;
 
 	d_entry = proc_create("hpbfn_enable", S_IWUGO, ufsf_para.ctrl_dir,
-			      &hpbfn_enable_fops);
+			      &hpbfn_enable_ops);
 	if(!d_entry)
 		return -ENOMEM;
 

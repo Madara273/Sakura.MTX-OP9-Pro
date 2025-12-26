@@ -421,11 +421,10 @@ static ssize_t mm_fb_read(struct file *file,
 	return count;
 }
 
-static const struct file_operations mm_fb_fops = {
-	.write = mm_fb_write,
-	.read  = mm_fb_read,
-	.open  = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops mm_fb_ops = {
+	.proc_write = mm_fb_write,
+	.proc_read  = mm_fb_read,
+	.proc_open  = simple_open,
 };
 
 static ssize_t adsp_crash_cause_read(struct file *file,
@@ -441,10 +440,9 @@ static ssize_t adsp_crash_cause_read(struct file *file,
 	return len;
 }
 
-static const struct file_operations adsp_crash_cause_fops = {
-	.read  = adsp_crash_cause_read,
-	.open  = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops adsp_crash_cause_ops = {
+	.proc_read  = adsp_crash_cause_read,
+	.proc_open  = simple_open,
 };
 
 int mm_fb_kevent_init(void)
@@ -464,14 +462,14 @@ int mm_fb_kevent_init(void)
 	g_limit.last_id = 0xFFFFFFFF;
 	g_limit.last_time = 0;
 
-	d_entry = proc_create_data("mm_fb", 0664, NULL, &mm_fb_fops, NULL);
+	d_entry = proc_create_data("mm_fb", 0664, NULL, &mm_fb_ops, NULL);
 	if (!d_entry) {
 		pr_err("%s: failed to create node\n", __func__);
 		ret = -ENODEV;
 		goto failed_proc_create_data;
 	}
 
-	d_entry = proc_create_data("adsp_crash_cause", 0664, NULL, &adsp_crash_cause_fops, NULL);
+	d_entry = proc_create_data("adsp_crash_cause", 0664, NULL, &adsp_crash_cause_ops, NULL);
 	if (!d_entry) {
 		pr_err("failed to adsp_crash_cause node\n");
 		ret = -ENODEV;

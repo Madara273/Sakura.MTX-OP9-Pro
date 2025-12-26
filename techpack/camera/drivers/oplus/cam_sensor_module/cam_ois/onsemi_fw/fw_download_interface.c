@@ -285,20 +285,17 @@ void  ois_write_fwstate(int state )
 }
 
 
-static const struct file_operations proc_file_fops = {
-	.owner = THIS_MODULE,
-	.read  = ois_read,
-	.write = ois_write,
+static const struct proc_ops proc_file_ops = {
+	.proc_read  = ois_read,
+	.proc_write = ois_write,
 };
-static const struct file_operations proc_file_fops_tele = {
-	.owner = THIS_MODULE,
-	.read  = ois_read_tele,
-	.write = ois_write_tele,
+static const struct proc_ops proc_file_ops_tele = {
+	.proc_read  = ois_read_tele,
+	.proc_write = ois_write_tele,
 };
 
-static const struct file_operations proc_file_fops_FW = {
-   .owner = THIS_MODULE,
-   .read = ois_read_fwstate,
+static const struct proc_ops proc_file_ops_FW = {
+	.proc_read = ois_read_fwstate,
 };
 
 int ois_start_read(void *arg, bool start)
@@ -1956,7 +1953,7 @@ void InitOISResource(struct cam_ois_ctrl_t *o_ctrl)
         }
 
         if(proc_file_entry == NULL){
-                proc_file_entry = proc_create("OISControl", 0777, face_common_dir, &proc_file_fops);
+                proc_file_entry = proc_create("OISControl", 0777, face_common_dir, &proc_file_ops);
                 if(proc_file_entry == NULL) {
                         CAM_ERR(CAM_OIS, "Create fail");
                 } else {
@@ -1965,7 +1962,7 @@ void InitOISResource(struct cam_ois_ctrl_t *o_ctrl)
         }
 
         if(proc_file_entry_tele == NULL){
-                proc_file_entry_tele = proc_create("OISControl_tele", 0777, face_common_dir, &proc_file_fops_tele);
+                proc_file_entry_tele = proc_create("OISControl_tele", 0777, face_common_dir, &proc_file_ops_tele);
                 if(proc_file_entry_tele == NULL) {
                         CAM_ERR(CAM_OIS, "Create fail");
                 } else {
@@ -1974,7 +1971,7 @@ void InitOISResource(struct cam_ois_ctrl_t *o_ctrl)
         }
 
 		if(proc_file_entry_FW == NULL ){
-			proc_file_entry_FW = proc_create("OIS_FW_DOWNLOAD_STATE",0777,face_common_dir,&proc_file_fops_FW);
+			proc_file_entry_FW = proc_create("OIS_FW_DOWNLOAD_STATE",0777,face_common_dir,&proc_file_ops_FW);
 			if(proc_file_entry_FW == NULL) {
 				CAM_ERR(CAM_OIS, "Create fail");
 			}else {
