@@ -441,7 +441,7 @@ EXPORT_SYMBOL(sec_auto_test);
 
 /*************************************auto test Funtion**************************************/
 
-static int calibrate_fops_read_func(struct seq_file *s, void *v)
+static int calibrate_ops_read_func(struct seq_file *s, void *v)
 {
 	struct touchpanel_data *ts = s->private;
 	struct sec_proc_operations *sec_ops = (struct sec_proc_operations *)
@@ -467,16 +467,15 @@ static int calibrate_fops_read_func(struct seq_file *s, void *v)
 	return 0;
 }
 
-static int proc_calibrate_fops_open(struct inode *inode, struct file *file)
+static int proc_calibrate_ops_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, calibrate_fops_read_func, PDE_DATA(inode));
+	return single_open(file, calibrate_ops_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_calibrate_fops = {
-	.owner = THIS_MODULE,
-	.open  = proc_calibrate_fops_open,
-	.read  = seq_read,
-	.release = single_release,
+static const struct proc_ops proc_calibrate_ops = {
+	.proc_open  = proc_calibrate_ops_open,
+	.proc_read  = seq_read,
+	.proc_release = single_release,
 };
 
 static int cal_status_read_func(struct seq_file *s, void *v)
@@ -505,16 +504,15 @@ static int cal_status_read_func(struct seq_file *s, void *v)
 	return 0;
 }
 
-static int proc_cal_status_fops_open(struct inode *inode, struct file *file)
+static int proc_cal_status_ops_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, cal_status_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations proc_cal_status_fops = {
-	.owner = THIS_MODULE,
-	.open  = proc_cal_status_fops_open,
-	.read  = seq_read,
-	.release = single_release,
+static const struct proc_ops proc_cal_status_ops = {
+	.proc_open  = proc_cal_status_ops_open,
+	.proc_read  = seq_read,
+	.proc_release = single_release,
 };
 
 static ssize_t proc_curved_control_read(struct file *file,
@@ -586,11 +584,10 @@ static ssize_t proc_curved_control_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations proc_curved_control_ops = {
-	.read  = proc_curved_control_read,
-	.write = proc_curved_control_write,
-	.open  = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops proc_curved_control_ops = {
+	.proc_read  = proc_curved_control_read,
+	.proc_write = proc_curved_control_write,
+	.proc_open  = simple_open,
 };
 
 static ssize_t proc_corner_control_write(struct file *file,
@@ -638,10 +635,9 @@ static ssize_t proc_corner_control_write(struct file *file,
 	return count;
 }
 
-static const struct file_operations proc_corner_control_ops = {
-	.write = proc_corner_control_write,
-	.open  = simple_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops proc_corner_control_ops = {
+	.proc_write = proc_corner_control_write,
+	.proc_open  = simple_open,
 };
 
 int sec_create_proc(struct touchpanel_data *ts,
@@ -654,7 +650,7 @@ int sec_create_proc(struct touchpanel_data *ts,
 	ts->private_data = sec_ops;
 
 	prEntry_tmp = proc_create_data("calibration", 0666, ts->prEntry_tp,
-				       &proc_calibrate_fops, ts);
+				       &proc_calibrate_ops, ts);
 
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
@@ -662,7 +658,7 @@ int sec_create_proc(struct touchpanel_data *ts,
 	}
 
 	prEntry_tmp = proc_create_data("calibration_status", 0666, ts->prEntry_tp,
-				       &proc_cal_status_fops, ts);
+				       &proc_cal_status_ops, ts);
 
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;

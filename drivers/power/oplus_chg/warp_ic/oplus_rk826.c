@@ -1631,18 +1631,18 @@ static ssize_t warp_fw_check_read(struct file *filp, char __user *buff, size_t c
 	return (len < count ? len : count);
 }
 
-static const struct file_operations warp_fw_check_proc_fops = {
-	.read = warp_fw_check_read,
-	.llseek = noop_llseek,
+static const struct proc_ops warp_fw_check_proc_ops = {
+	.proc_read = warp_fw_check_read,
+	.proc_lseek = noop_llseek,
 };
 
 static int init_proc_warp_fw_check(void)
 {
 	struct proc_dir_entry *p = NULL;
 
-	p = proc_create("warp_fw_check", 0444, NULL, &warp_fw_check_proc_fops);
+	p = proc_create("warp_fw_check", 0444, NULL, &warp_fw_check_proc_ops);
 	if (!p) {
-		chg_err("proc_create warp_fw_check_proc_fops fail!\n");
+		chg_err("proc_create warp_fw_check_proc_ops fail!\n");
 	}
 	return 0;
 }

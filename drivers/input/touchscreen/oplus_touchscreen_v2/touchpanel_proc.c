@@ -112,7 +112,11 @@ static ssize_t proc_optimized_time_read(struct file *file,
 }
 
 
-DECLARE_PROC_OPS(proc_optimized_time_fops, simple_open, proc_optimized_time_read, proc_optimized_time_write, NULL);
+static const struct proc_ops proc_optimized_time_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_optimized_time_read,
+	.proc_write	= proc_optimized_time_write,
+};
 
 /*tp_index - For read current tp index
  * Output:
@@ -152,7 +156,11 @@ static ssize_t proc_index_control_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_tp_index_ops, simple_open, proc_index_control_read, proc_index_control_write, NULL);
+static const struct proc_ops proc_tp_index_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_index_control_read,
+	.proc_write	= proc_index_control_write,
+};
 
 /*debug_level - For touch panel driver debug_level
  * Output:
@@ -222,7 +230,11 @@ static ssize_t proc_debug_level_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_debug_level_ops, simple_open, proc_debug_level_read, proc_debug_level_write, NULL);
+static const struct proc_ops proc_debug_level_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_debug_level_read,
+	.proc_write	= proc_debug_level_write,
+};
 
 /*double_tap_enable - For black screen gesture
  * Input:
@@ -292,7 +304,11 @@ static ssize_t proc_gesture_control_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_gesture_control_fops, simple_open, proc_gesture_control_read, proc_gesture_control_write, NULL);
+static const struct proc_ops proc_gesture_control_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_gesture_control_read,
+	.proc_write	= proc_gesture_control_write,
+};
 
 /*
  *    each bit cant enable or disable each gesture
@@ -356,7 +372,11 @@ static ssize_t proc_gesture_control_indep_read(struct file *file, char __user *u
 }
 
 
-DECLARE_PROC_OPS(proc_gesture_control_indep_fops, simple_open, proc_gesture_control_indep_read, proc_gesture_control_indep_write, NULL);
+static const struct proc_ops proc_gesture_control_indep_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_gesture_control_indep_read,
+	.proc_write	= proc_gesture_control_indep_write,
+};
 
 /*coordinate - For black screen gesture coordinate*/
 static ssize_t proc_coordinate_read(struct file *file, char __user *buffer,
@@ -389,7 +409,10 @@ static ssize_t proc_coordinate_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_coordinate_fops, simple_open, proc_coordinate_read, NULL, NULL);
+static const struct proc_ops proc_coordinate_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_coordinate_read,
+};
 
 #define HIGH_FRAME_RATE "high_frame_rate"
 /*game_switch_enable
@@ -483,7 +506,11 @@ static ssize_t proc_game_switch_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_game_switch_fops, simple_open, proc_game_switch_read, proc_game_switch_write, NULL);
+static const struct proc_ops proc_game_switch_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_game_switch_read,
+	.proc_write	= proc_game_switch_write,
+};
 
 /*irq_depth - For enable or disable irq
  * Output:
@@ -545,7 +572,11 @@ static ssize_t proc_irq_status_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_get_irq_depth_fops, simple_open, proc_get_irq_depth_read, proc_irq_status_write, NULL);
+static const struct proc_ops proc_get_irq_depth_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_get_irq_depth_read,
+	.proc_write	= proc_irq_status_write,
+};
 
 static ssize_t proc_noise_modetest_read(struct file *file, char __user *buffer,
 					size_t count, loff_t *ppos)
@@ -596,7 +627,11 @@ static ssize_t proc_noise_modetest_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_noise_modetest_fops, simple_open, proc_noise_modetest_read, proc_noise_modetest_write, NULL);
+static const struct proc_ops proc_noise_modetest_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_noise_modetest_read,
+	.proc_write	= proc_noise_modetest_write,
+};
 
 /*tp_fw_update - For touch panel fw update
  * Input:
@@ -671,7 +706,10 @@ static ssize_t proc_fw_update_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_fw_update_ops, simple_open, NULL, proc_fw_update_write, NULL);
+static const struct proc_ops proc_fw_update_ops = {
+	.proc_open	= simple_open,
+	.proc_write	= proc_fw_update_write,
+};
 
 /*oplus_register_info - For i2c debug way
  * Output:
@@ -751,7 +789,11 @@ static ssize_t proc_register_info_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_register_info_fops, simple_open, proc_register_info_read, proc_register_info_write, NULL);
+static const struct proc_ops proc_register_info_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_register_info_read,
+	.proc_write	= proc_register_info_write,
+};
 
 static ssize_t proc_incell_panel_info_read(struct file *file,
 		char __user *buffer, size_t count, loff_t *ppos)
@@ -766,7 +808,10 @@ static ssize_t proc_incell_panel_info_read(struct file *file,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_incell_panel_fops, simple_open, proc_incell_panel_info_read, NULL, NULL);
+static const struct proc_ops proc_incell_panel_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_incell_panel_info_read,
+};
 
 /*fd_enable - For touch panel face detect
  * Input:
@@ -842,7 +887,11 @@ static ssize_t proc_fd_enable_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(tp_fd_enable_fops, simple_open, proc_fd_enable_read, proc_fd_enable_write, NULL);
+static const struct proc_ops tp_fd_enable_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_fd_enable_read,
+	.proc_write	= proc_fd_enable_write,
+};
 
 /*event_num - For touch panel face detect input num
  * Output:
@@ -874,7 +923,10 @@ static ssize_t proc_event_num_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(tp_event_num_fops, simple_open, proc_event_num_read, NULL, NULL);
+static const struct proc_ops tp_event_num_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_event_num_read,
+};
 
 /*touch_count - For face detect touch count
  * Output:
@@ -901,7 +953,10 @@ static ssize_t proc_fd_touch_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(fd_touch_num_fops, simple_open, proc_fd_touch_read, NULL, NULL);
+static const struct proc_ops fd_touch_num_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_fd_touch_read,
+};
 
 /*fp_enable - For touch panel triger fingerprint
  * Input:
@@ -983,7 +1038,11 @@ static ssize_t proc_fp_enable_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(tp_fp_enable_fops, simple_open, proc_fp_enable_read, proc_fp_enable_write, NULL);
+static const struct proc_ops tp_fp_enable_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_fp_enable_read,
+	.proc_write	= proc_fp_enable_write,
+};
 
 /*proc/touchpanel/baseline_test*/
 static int tp_auto_test_read_func(struct seq_file *s, void *v)
@@ -999,8 +1058,11 @@ static int baseline_autotest_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_auto_test_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_auto_test_proc_fops, baseline_autotest_open, seq_read, NULL, single_release);
-
+static const struct proc_ops tp_auto_test_proc_ops = {
+	.proc_open	= baseline_autotest_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*black_screen_test - For incell ic black screen test*/
 static ssize_t proc_black_screen_test_read(struct file *file,
@@ -1039,7 +1101,11 @@ static ssize_t proc_black_screen_test_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_black_screen_test_fops, simple_open, proc_black_screen_test_read, proc_black_screen_test_write, NULL);
+static const struct proc_ops proc_black_screen_test_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_black_screen_test_read,
+	.proc_write	= proc_black_screen_test_write,
+};
 
 /*baseline_result - For GKI auto test result*/
 static int tp_auto_test_result_read(struct seq_file *s, void *v)
@@ -1055,8 +1121,11 @@ static int tp_auto_test_result_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_auto_test_result_read, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_auto_test_result_fops, tp_auto_test_result_open, seq_read, NULL, single_release);
-
+static const struct proc_ops tp_auto_test_result_ops = {
+	.proc_open	= tp_auto_test_result_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*baseline_result - For GKI auto test result*/
 static int tp_black_screen_result_read(struct seq_file *s, void *v)
@@ -1072,7 +1141,11 @@ static int tp_black_screen_result_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_black_screen_result_read, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(proc_black_screen_result_fops, tp_black_screen_result_open, seq_read, NULL, single_release);
+static const struct proc_ops proc_black_screen_result_ops = {
+	.proc_open	= tp_black_screen_result_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*limit_enable - For touch panel direction
  * Output:
@@ -1141,7 +1214,11 @@ static ssize_t proc_dir_control_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(touch_dir_proc_fops, simple_open, proc_dir_control_read, proc_dir_control_write, NULL);
+static const struct proc_ops touch_dir_proc_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_dir_control_read,
+	.proc_write	= proc_dir_control_write,
+};
 
 static ssize_t proc_rate_white_list_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *ppos)
@@ -1208,7 +1285,11 @@ static ssize_t proc_rate_white_list_read(struct file *file,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_rate_white_list_fops, simple_open, proc_rate_white_list_read, proc_rate_white_list_write, NULL);
+static const struct proc_ops proc_rate_white_list_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_rate_white_list_read,
+	.proc_write	= proc_rate_white_list_write,
+};
 
 static ssize_t proc_switch_usb_state_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
 {
@@ -1265,7 +1346,11 @@ static ssize_t proc_switch_usb_state_read(struct file *file,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_switch_usb_state_fops, simple_open, proc_switch_usb_state_read, proc_switch_usb_state_write, NULL);
+static const struct proc_ops proc_switch_usb_state_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_switch_usb_state_read,
+	.proc_write	= proc_switch_usb_state_write,
+};
 
 static ssize_t proc_wireless_charge_detect_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *ppos)
@@ -1334,7 +1419,11 @@ static ssize_t proc_wireless_charge_detect_read(struct file *file,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_wireless_charge_detect_fops, simple_open, proc_wireless_charge_detect_read, proc_wireless_charge_detect_write, NULL);
+static const struct proc_ops proc_wireless_charge_detect_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_wireless_charge_detect_read,
+	.proc_write	= proc_wireless_charge_detect_write,
+};
 
 static ssize_t proc_headset_detect_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *ppos)
@@ -1390,8 +1479,11 @@ static ssize_t proc_headset_detect_read(struct file *file,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_headset_detect_fops, simple_open, proc_headset_detect_read, proc_headset_detect_write, NULL);
-
+static const struct proc_ops proc_headset_detect_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_headset_detect_read,
+	.proc_write	= proc_headset_detect_write,
+};
 
 static ssize_t proc_aging_test_read(struct file *file, char __user *user_buf,
 				    size_t count, loff_t *ppos)
@@ -1482,8 +1574,11 @@ EXIT:
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_aging_test_ops, simple_open, proc_aging_test_read, proc_aging_test_write, NULL);
-
+static const struct proc_ops proc_aging_test_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_aging_test_read,
+	.proc_write	= proc_aging_test_write,
+};
 
 static ssize_t proc_smooth_level_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
 {
@@ -1558,7 +1653,11 @@ static ssize_t proc_smooth_level_read(struct file *file, char __user *user_buf, 
     return ret;
 }
 
-DECLARE_PROC_OPS(proc_smooth_level_fops, simple_open, proc_smooth_level_read, proc_smooth_level_write, NULL);
+static const struct proc_ops proc_smooth_level_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_smooth_level_read,
+	.proc_write	= proc_smooth_level_write,
+};
 
 static ssize_t proc_sensitive_level_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
 {
@@ -1629,9 +1728,13 @@ static ssize_t proc_sensitive_level_read(struct file *file, char __user *user_bu
     return ret;
 }
 
-DECLARE_PROC_OPS(proc_sensitive_level_fops, simple_open, proc_sensitive_level_read, proc_sensitive_level_write, NULL);
+static const struct proc_ops proc_sensitive_level_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_sensitive_level_read,
+	.proc_write	= proc_sensitive_level_write,
+};
 
-static int calibrate_fops_read_func(struct seq_file *s, void *v)
+static int calibrate_ops_read_func(struct seq_file *s, void *v)
 {
 	struct touchpanel_data *ts = s->private;
 
@@ -1654,13 +1757,16 @@ static int calibrate_fops_read_func(struct seq_file *s, void *v)
 	return 0;
 }
 
-static int proc_calibrate_fops_open(struct inode *inode, struct file *file)
+static int proc_calibrate_ops_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, calibrate_fops_read_func, PDE_DATA(inode));
+	return single_open(file, calibrate_ops_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(proc_calibrate_fops, proc_calibrate_fops_open, seq_read, NULL, single_release);
-
+static const struct proc_ops proc_calibrate_ops = {
+	.proc_open	= proc_calibrate_ops_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 static int cal_status_read_func(struct seq_file *s, void *v)
 {
@@ -1685,13 +1791,16 @@ static int cal_status_read_func(struct seq_file *s, void *v)
 	return 0;
 }
 
-static int proc_cal_status_fops_open(struct inode *inode, struct file *file)
+static int proc_cal_status_ops_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, cal_status_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(proc_cal_status_fops, proc_cal_status_fops_open, seq_read, NULL, single_release);
-
+static const struct proc_ops proc_cal_status_ops = {
+	.proc_open	= proc_cal_status_ops_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*******Part4:Debug node Function  Area********************/
 
@@ -2268,7 +2377,11 @@ write_exit:
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_oplus_apk_fops, simple_open, oplus_apk_read, oplus_apk_write, NULL);
+static const struct proc_ops proc_oplus_apk_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= oplus_apk_read,
+	.proc_write	= oplus_apk_write,
+};
 
 #endif /*end of CONFIG_OPLUS_TP_APK*/
 
@@ -2351,7 +2464,11 @@ static int data_baseline_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_baseline_debug_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_baseline_data_proc_fops, data_baseline_open, seq_read, NULL, single_release);
+static const struct proc_ops tp_baseline_data_proc_ops = {
+	.proc_open	= data_baseline_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/delta*/
 static int tp_delta_debug_read_func(struct seq_file *s, void *v)
@@ -2410,8 +2527,11 @@ static int data_delta_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_delta_debug_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_delta_data_proc_fops, data_delta_open, seq_read, NULL, single_release);
-
+static const struct proc_ops tp_delta_data_proc_ops = {
+	.proc_open	= data_delta_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/self_delta*/
 static int tp_self_delta_debug_read_func(struct seq_file *s, void *v)
@@ -2464,7 +2584,11 @@ static int data_self_delta_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_self_delta_debug_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_self_delta_data_proc_fops, data_self_delta_open, seq_read, NULL, single_release);
+static const struct proc_ops tp_self_delta_data_proc_ops = {
+	.proc_open	= data_self_delta_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/self_raw*/
 static int tp_self_raw_debug_read_func(struct seq_file *s, void *v)
@@ -2517,7 +2641,11 @@ static int data_self_raw_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_self_raw_debug_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_self_raw_data_proc_fops, data_self_raw_open, seq_read, NULL, single_release);
+static const struct proc_ops tp_self_raw_data_proc_ops = {
+	.proc_open	= data_self_raw_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/main_register*/
 static int tp_main_register_read_func(struct seq_file *s, void *v)
@@ -2583,7 +2711,11 @@ static int main_register_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_main_register_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_main_register_proc_fops, main_register_open, seq_read, NULL, single_release);
+static const struct proc_ops tp_main_register_proc_ops = {
+	.proc_open	= main_register_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/reserve*/
 static int tp_reserve_read_func(struct seq_file *s, void *v)
@@ -2636,7 +2768,11 @@ static int reserve_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_reserve_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_reserve_proc_fops, reserve_open, seq_read, NULL, single_release);
+static const struct proc_ops tp_reserve_proc_ops = {
+	.proc_open	= reserve_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/data_limit*/
 static int tp_limit_data_read_func(struct seq_file *s, void *v)
@@ -2657,7 +2793,11 @@ static int limit_data_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_limit_data_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_limit_data_proc_fops, limit_data_open, seq_read, NULL, single_release);
+static const struct proc_ops tp_limit_data_proc_ops = {
+	.proc_open	= limit_data_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/abs_doze*/
 static int tp_abs_doze_read_func(struct seq_file *s, void *v)
@@ -2710,8 +2850,11 @@ static int abs_doze_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_abs_doze_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_abs_doze_proc_fops, abs_doze_open, seq_read, NULL, single_release);
-
+static const struct proc_ops tp_abs_doze_proc_ops = {
+	.proc_open	= abs_doze_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*proc/touchpanel/debug_info/snr*/
 static ssize_t proc_snr_write(struct file *file, const char __user *buf, size_t count, loff_t *lo)
@@ -2806,7 +2949,11 @@ static int proc_snr_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_baseline_snr_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(proc_snr_ops, proc_snr_open, seq_read, proc_snr_write, NULL);
+static const struct proc_ops proc_snr_ops = {
+	.proc_open	= proc_snr_open,
+	.proc_read	= seq_read,
+	.proc_write	= proc_snr_write,
+};
 
 void tp_freq_hop_work(struct work_struct *work)
 {
@@ -2906,8 +3053,11 @@ static ssize_t proc_freq_hop_read(struct file *file, char __user *buffer,
 	return ret;
 }
 
-DECLARE_PROC_OPS(proc_freq_hop_fops, simple_open, proc_freq_hop_read, proc_freq_hop_write, NULL);
-
+static const struct proc_ops proc_freq_hop_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= proc_freq_hop_read,
+	.proc_write	= proc_freq_hop_write,
+};
 
 /*proc/touchpanel/debug_info/health_monitor*/
 static int tp_health_monitor_read_func(struct seq_file *s, void *v)
@@ -2960,7 +3110,12 @@ static int health_monitor_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_health_monitor_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(tp_health_monitor_proc_fops, health_monitor_open, seq_read, health_monitor_control, single_release);
+static const struct proc_ops tp_health_monitor_proc_ops = {
+	.proc_open	= health_monitor_open,
+	.proc_read	= seq_read,
+	.proc_write	= health_monitor_control,
+	.proc_release	= single_release,
+};
 
 /*******Part5:Register node Function  Area********************/
 
@@ -2968,11 +3123,7 @@ typedef struct {
 	char *name;
 	umode_t mode;
 	struct proc_dir_entry *node;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,10,0)
-	const struct proc_ops *fops;
-#else
-	const struct file_operations *fops;
-#endif
+	const struct proc_ops *ops;
 	void *data;
 	bool is_created;/*proc node is creater or not*/
 	bool is_support;/*feature is supported or not*/
@@ -2987,24 +3138,24 @@ static int init_debug_info_proc(struct touchpanel_data *ts)
 	struct proc_dir_entry *prEntry_debug_info = NULL;
 
 	tp_proc_node proc_debug_node[] = {
-		{"data_limit", 0666, NULL, &tp_limit_data_proc_fops, ts, false, true},/* show limit data interface*/
-		{"baseline", 0666, NULL, &tp_baseline_data_proc_fops, ts, false, true},/* show baseline data interface*/
-		{"delta", 0666, NULL, &tp_delta_data_proc_fops, ts, false, true},/* show delta interface*/
-		{"self_delta", 0666, NULL, &tp_self_delta_data_proc_fops, ts, false, true},/* show self delta interface*/
-		{"self_raw", 0666, NULL, &tp_self_raw_data_proc_fops, ts, false, true},/* show self_raw interface*/
-		{"main_register", 0666, NULL, &tp_main_register_proc_fops, ts, false, true},/* show main_register interface*/
-		{"reserve", 0666, NULL, &tp_reserve_proc_fops, ts, false, true},/* show reserve interface*/
-		{"abs_doze", 0666, NULL, &tp_abs_doze_proc_fops, ts, false, true},/* show abs_doze interface*/
+		{"data_limit", 0666, NULL, &tp_limit_data_proc_ops, ts, false, true},/* show limit data interface*/
+		{"baseline", 0666, NULL, &tp_baseline_data_proc_ops, ts, false, true},/* show baseline data interface*/
+		{"delta", 0666, NULL, &tp_delta_data_proc_ops, ts, false, true},/* show delta interface*/
+		{"self_delta", 0666, NULL, &tp_self_delta_data_proc_ops, ts, false, true},/* show self delta interface*/
+		{"self_raw", 0666, NULL, &tp_self_raw_data_proc_ops, ts, false, true},/* show self_raw interface*/
+		{"main_register", 0666, NULL, &tp_main_register_proc_ops, ts, false, true},/* show main_register interface*/
+		{"reserve", 0666, NULL, &tp_reserve_proc_ops, ts, false, true},/* show reserve interface*/
+		{"abs_doze", 0666, NULL, &tp_abs_doze_proc_ops, ts, false, true},/* show abs_doze interface*/
 		{
 			"snr", 0666, NULL, &proc_snr_ops, ts, false,
 			ts->snr_read_support
 		},/* show abs_doze interface*/
 		{
-			"health_monitor", 0666, NULL, &tp_health_monitor_proc_fops, ts, false,
+			"health_monitor", 0666, NULL, &tp_health_monitor_proc_ops, ts, false,
 			ts->health_monitor_support
 		},
 		{
-			"freq_hop_simulate_support", 0666, NULL, &proc_freq_hop_fops, ts, false,
+			"freq_hop_simulate_support", 0666, NULL, &proc_freq_hop_ops, ts, false,
 			ts->freq_hop_simulate_support
 		},
 	};
@@ -3025,7 +3176,7 @@ static int init_debug_info_proc(struct touchpanel_data *ts)
 		if (proc_debug_node[i].is_support) {
 			proc_debug_node[i].node = proc_create_data(proc_debug_node[i].name,
 						  proc_debug_node[i].mode,
-						  prEntry_debug_info, proc_debug_node[i].fops, proc_debug_node[i].data);
+						  prEntry_debug_info, proc_debug_node[i].ops, proc_debug_node[i].data);
 
 			if (proc_debug_node[i].node == NULL) {
 				proc_debug_node[i].is_created = false;
@@ -3058,82 +3209,82 @@ int init_touchpanel_proc(struct touchpanel_data *ts)
 
 	tp_proc_node tp_proc_node[] = {
 		{
-			"oplus_optimized_time", 0666, NULL, &proc_optimized_time_fops, ts, false,
+			"oplus_optimized_time", 0666, NULL, &proc_optimized_time_ops, ts, false,
 			ts->optimized_show_support
 		},
 		{"tp_index", 0666, NULL, &proc_tp_index_ops, ts, false, true},
 		{"debug_level", 0644, NULL, &proc_debug_level_ops, ts, false, true},
 		{
-			"double_tap_enable", 0666, NULL, &proc_gesture_control_fops, ts, false,
+			"double_tap_enable", 0666, NULL, &proc_gesture_control_ops, ts, false,
 			ts->black_gesture_support
 		},
 		{
-			"coordinate", 0444, NULL, &proc_coordinate_fops, ts, false,
+			"coordinate", 0444, NULL, &proc_coordinate_ops, ts, false,
 			ts->black_gesture_support
 		},
 		{
-			"game_switch_enable", 0666, NULL, &proc_game_switch_fops, ts, false,
+			"game_switch_enable", 0666, NULL, &proc_game_switch_ops, ts, false,
 			ts->game_switch_support
 		},
-		{"irq_depth", 0666, NULL, &proc_get_irq_depth_fops, ts, false, true},
+		{"irq_depth", 0666, NULL, &proc_get_irq_depth_ops, ts, false, true},
 		{
-			"oplus_tp_noise_modetest", 0664, NULL, &proc_noise_modetest_fops, ts, false,
+			"oplus_tp_noise_modetest", 0664, NULL, &proc_noise_modetest_ops, ts, false,
 			ts->noise_modetest_support
 		},
 		{"tp_fw_update", 0666, NULL, &proc_fw_update_ops, ts, false, true},
-		{"oplus_register_info", 0664, NULL, &proc_register_info_fops, ts, false, true},
+		{"oplus_register_info", 0664, NULL, &proc_register_info_ops, ts, false, true},
 		{
-			"incell_panel", 0664, NULL, &proc_incell_panel_fops, ts, false,
+			"incell_panel", 0664, NULL, &proc_incell_panel_ops, ts, false,
 			ts->is_incell_panel
 		},
 		{
-			"fd_enable", 0666, NULL, &tp_fd_enable_fops, ts, false,
+			"fd_enable", 0666, NULL, &tp_fd_enable_ops, ts, false,
 			ts->face_detect_support
 		},
 		{
-			"event_num", 0666, NULL, &tp_event_num_fops, ts, false,
+			"event_num", 0666, NULL, &tp_event_num_ops, ts, false,
 			ts->face_detect_support
 		},
 		{
-			"fd_touch_count", 0666, NULL, &fd_touch_num_fops, ts, false,
+			"fd_touch_count", 0666, NULL, &fd_touch_num_ops, ts, false,
 			ts->face_detect_support
 		},
 		{
-			"fp_enable", 0666, NULL, &tp_fp_enable_fops, ts, false,
+			"fp_enable", 0666, NULL, &tp_fp_enable_ops, ts, false,
 			ts->fingerprint_underscreen_support
 		},
 		{
-			"baseline_test", 0666, NULL, &tp_auto_test_proc_fops, ts, false, true
+			"baseline_test", 0666, NULL, &tp_auto_test_proc_ops, ts, false, true
 		},
 		{
-			"black_screen_test", 0666, NULL, &proc_black_screen_test_fops, ts, false,
+			"black_screen_test", 0666, NULL, &proc_black_screen_test_ops, ts, false,
 			ts->gesture_test_support
 		},
 		{
-			"baseline_result", 0666, NULL, &tp_auto_test_result_fops, ts, false, true
+			"baseline_result", 0666, NULL, &tp_auto_test_result_ops, ts, false, true
 		},
 		{
-			"black_screen_result", 0666, NULL, &proc_black_screen_result_fops, ts, false,
+			"black_screen_result", 0666, NULL, &proc_black_screen_result_ops, ts, false,
 			ts->gesture_test_support
 		},
 		{
-			"oplus_tp_direction", 0666, NULL, &touch_dir_proc_fops, ts, false,
+			"oplus_tp_direction", 0666, NULL, &touch_dir_proc_ops, ts, false,
 			ts->fw_edge_limit_support
 		},
 		{
-			"report_rate_white_list", 0666, NULL, &proc_rate_white_list_fops, ts, false,
+			"report_rate_white_list", 0666, NULL, &proc_rate_white_list_ops, ts, false,
 			ts->report_rate_white_list_support
 		},
 		{
-			"charge_detect", 0666, NULL, &proc_switch_usb_state_fops, ts, false,
+			"charge_detect", 0666, NULL, &proc_switch_usb_state_ops, ts, false,
 			ts->charger_pump_support
 		},
 		{
-			"wireless_charge_detect", 0666, NULL, &proc_wireless_charge_detect_fops, ts, false,
+			"wireless_charge_detect", 0666, NULL, &proc_wireless_charge_detect_ops, ts, false,
 			ts->wireless_charger_support
 		},
 		{
-			"headset_detect", 0666, NULL, &proc_headset_detect_fops, ts, false,
+			"headset_detect", 0666, NULL, &proc_headset_detect_ops, ts, false,
 			ts->headset_pump_support
 		},
 		{
@@ -3141,28 +3292,28 @@ int init_touchpanel_proc(struct touchpanel_data *ts)
 			true
 		},
 		{
-			"smooth_level", 0666, NULL, &proc_smooth_level_fops, ts, false,
+			"smooth_level", 0666, NULL, &proc_smooth_level_ops, ts, false,
 			ts->smooth_level_array_support
 		},
 		{
-			"sensitive_level", 0666, NULL, &proc_sensitive_level_fops, ts, false,
+			"sensitive_level", 0666, NULL, &proc_sensitive_level_ops, ts, false,
 			ts->sensitive_level_array_support
 		},
 		{
-			"double_tap_enable_indep", 0666, NULL, &proc_gesture_control_indep_fops, ts, false,
+			"double_tap_enable_indep", 0666, NULL, &proc_gesture_control_indep_ops, ts, false,
 			ts->black_gesture_indep_support
 		},
 		{
-			"calibration", 0666, NULL, &proc_calibrate_fops, ts, false,
+			"calibration", 0666, NULL, &proc_calibrate_ops, ts, false,
 			ts->auto_test_need_cal_support
 		},
 		{
-			"calibration_status", 0666, NULL, &proc_cal_status_fops, ts, false,
+			"calibration_status", 0666, NULL, &proc_cal_status_ops, ts, false,
 			ts->auto_test_need_cal_support
 		},
 		/* proc/touchpanel/oplus_apk. Add the new test node for debug and apk. By zhangping 20190402 start*/
 #ifdef CONFIG_OPLUS_TP_APK
-		{"oplus_apk", 0666, NULL, &proc_oplus_apk_fops, ts, false, true},
+		{"oplus_apk", 0666, NULL, &proc_oplus_apk_ops, ts, false, true},
 #endif /* end of CONFIG_OPLUS_TP_APK*/
 	};
 
@@ -3213,7 +3364,7 @@ int init_touchpanel_proc(struct touchpanel_data *ts)
 		if (tp_proc_node[i].is_support) {
 			tp_proc_node[i].node = proc_create_data(tp_proc_node[i].name,
 								tp_proc_node[i].mode,
-								prEntry_tp, tp_proc_node[i].fops, tp_proc_node[i].data);
+								prEntry_tp, tp_proc_node[i].ops, tp_proc_node[i].data);
 
 			if (tp_proc_node[i].node == NULL) {
 				tp_proc_node[i].is_created = false;

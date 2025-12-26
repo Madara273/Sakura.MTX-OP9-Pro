@@ -665,7 +665,11 @@ static ssize_t focal_debug_read(struct file *filp, char __user *buff,
 	return num_read_chars;
 }
 
-DECLARE_PROC_OPS(focal_proc_fops, simple_open, focal_debug_read, focal_debug_write, NULL);
+static const struct proc_ops focal_proc_ops = {
+	.proc_open	= simple_open,
+	.proc_read	= focal_debug_read,
+	.proc_write	= focal_debug_write,
+};
 
 static ssize_t proc_grip_control_write(struct file *file,
 				       const char __user *buffer, size_t count, loff_t *ppos)
@@ -712,14 +716,17 @@ static ssize_t proc_grip_control_write(struct file *file,
 	return count;
 }
 
-DECLARE_PROC_OPS(proc_grip_control_ops, simple_open, NULL, proc_grip_control_write, NULL);
+static const struct proc_ops proc_grip_control_ops = {
+	.proc_open	= simple_open,
+	.proc_write	= proc_grip_control_write,
+};
 
 int focal_create_apk_debug_channel(struct touchpanel_data *ts)
 {
 	int ret = 0;
 	struct proc_dir_entry *focal_proc_entry = NULL;
 	focal_proc_entry = proc_create_data("ftxxxx-debug", 0777, NULL,
-					    &focal_proc_fops, ts);
+					    &focal_proc_ops, ts);
 
 	if (NULL == focal_proc_entry) {
 		ret = -ENOMEM;
@@ -958,7 +965,10 @@ proc_read_err:
 	return ret;
 }
 
-DECLARE_PROC_OPS(ftxxxx_proc_fops, NULL, fts_debug_read, fts_debug_write, NULL);
+static const struct proc_ops ftxxxx_proc_ops = {
+	.proc_read	= fts_debug_read,
+	.proc_write	= fts_debug_write,
+};
 
 /*proc/touchpanel/baseline_test*/
 static int fts_auto_test_read_func(struct seq_file *s, void *v)
@@ -1081,7 +1091,11 @@ static int fts_baseline_autotest_open(struct inode *inode, struct file *file)
 	return single_open(file, fts_auto_test_read_func, PDE_DATA(inode));
 }
 
-DECLARE_PROC_OPS(fts_auto_test_proc_fops, fts_baseline_autotest_open, seq_read, NULL, single_release);
+static const struct proc_ops fts_auto_test_proc_ops = {
+	.proc_open	= fts_baseline_autotest_open,
+	.proc_read	= seq_read,
+	.proc_release	= single_release,
+};
 
 /*int fts_create_proc(struct touchpanel_data *ts,
 		    struct fts_proc_operations *syna_ops)
@@ -1091,14 +1105,14 @@ DECLARE_PROC_OPS(fts_auto_test_proc_fops, fts_baseline_autotest_open, seq_read, 
 
 	g_syna_ops = syna_ops;
 	prEntry_tmp = proc_create_data("baseline_test", 0666, ts->prEntry_tp,
-				       &fts_auto_test_proc_fops, ts);
+				       &fts_auto_test_proc_ops, ts);
 
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
 		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__);
 	}
 
-	proc.proc_entry = proc_create_data(PROC_NAME, 0777, NULL, &ftxxxx_proc_fops,
+	proc.proc_entry = proc_create_data(PROC_NAME, 0777, NULL, &ftxxxx_proc_ops,
 					   ts);
 
 	if (NULL == proc.proc_entry) {

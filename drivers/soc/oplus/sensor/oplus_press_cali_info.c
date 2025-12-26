@@ -88,13 +88,14 @@ static ssize_t press_offset_write_proc(struct file *file, const char __user *buf
 
     return count;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
-static const struct proc_ops press_offset_fops = {
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static const struct proc_ops press_offset_ops = {
         .proc_read = press_offset_read_proc,
         .proc_write = press_offset_write_proc,
 };
 #else
-static struct file_operations press_offset_fops = {
+static struct file_operations press_offset_ops = {
     .read = press_offset_read_proc,
     .write = press_offset_write_proc,
 };
@@ -137,7 +138,7 @@ int oplus_press_cali_data_init(void)
         goto exit;
     }
     pentry = proc_create("offset", 0666, gdata->proc_oplus_press,
-            &press_offset_fops);
+            &press_offset_ops);
 
     if (!pentry) {
         pr_err("create offset proc failed.\n");
