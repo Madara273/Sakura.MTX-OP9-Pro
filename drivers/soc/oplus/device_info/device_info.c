@@ -102,11 +102,10 @@ static int device_info_open(struct inode *inode, struct file *file)
 	return single_open(file, devinfo_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations device_node_fops = {
-	.owner = THIS_MODULE,
-	.open = device_info_open,
-	.read = seq_read,
-	.release = single_release,
+static const struct proc_ops device_node_ops = {
+	.proc_open = device_info_open,
+	.proc_read = seq_read,
+	.proc_release = single_release,
 };
 
 static int devinfo_read_ufsplus_func(struct seq_file *s, void *v)
@@ -126,11 +125,10 @@ static int device_info_for_ufsplus_open(struct inode *inode, struct file *file)
 }
 
 
-static const struct file_operations device_node_for_ufsplus_fops = {
-	.owner = THIS_MODULE,
-	.open = device_info_for_ufsplus_open,
-	.read = seq_read,
-	.release = single_release,
+static const struct proc_ops device_node_for_ufsplus_ops = {
+	.proc_open = device_info_for_ufsplus_open,
+	.proc_read = seq_read,
+	.proc_release = single_release,
 };
 
 static int deviceid_read_func(struct seq_file *s, void *v)
@@ -151,11 +149,10 @@ static int device_id_open(struct inode *inode, struct file *file)
 	return single_open(file, deviceid_read_func, PDE_DATA(inode));
 }
 
-static const struct file_operations device_id_fops = {
-	.owner = THIS_MODULE,
-	.open = device_id_open,
-	.read = seq_read,
-	.release = single_release,
+static const struct proc_ops device_id_ops = {
+	.proc_open = device_id_open,
+	.proc_read = seq_read,
+	.proc_release = single_release,
 };
 
 int register_device_id(struct device_info *dev_info, const char *label, const char *id_match, int id)
@@ -173,7 +170,7 @@ int register_device_id(struct device_info *dev_info, const char *label, const ch
 
 	list_add(& (hw_id->list), & (dev_info->dev_list));
 
-	if (!proc_create_data(label, S_IRUGO, g_parent, &device_id_fops, hw_id)) {
+	if (!proc_create_data(label, S_IRUGO, g_parent, &device_id_ops, hw_id)) {
 		dev_msg("failed to create entry %s \n", label);
 	}
 
@@ -190,7 +187,7 @@ int register_devinfo(char *name, struct manufacture_info *info)
 
 	memcpy(info->name, name, strlen(name) > INFO_LEN-1?INFO_LEN-1:strlen(name));
 
-	d_entry = proc_create_data(name, S_IRUGO, g_parent, &device_node_fops, info);
+	d_entry = proc_create_data(name, S_IRUGO, g_parent, &device_node_ops, info);
 	if (!d_entry) {
 		return -EINVAL;
 	}
@@ -211,7 +208,7 @@ int register_device_proc_for_ufsplus(char *name, int *hpb_status, int *tw_status
 	ufsplus_status->hpb_status = hpb_status;
 	ufsplus_status->tw_status = tw_status;
 
-	d_entry = proc_create_data(name, S_IRUGO, g_parent, &device_node_for_ufsplus_fops, ufsplus_status);
+	d_entry = proc_create_data(name, S_IRUGO, g_parent, &device_node_for_ufsplus_ops, ufsplus_status);
 	if (!d_entry) {
 		kfree(ufsplus_status);
 		return -EINVAL;

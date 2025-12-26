@@ -6022,11 +6022,10 @@ static ssize_t proc_vibration_style_write(struct file *filp, const char __user *
 	return count;
 }
 
-static const struct file_operations proc_vibration_style_ops = {
-	.read = proc_vibration_style_read,
-	.write = proc_vibration_style_write,
-	.open =  aw_file_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops proc_vibration_style_ops = {
+	.proc_read = proc_vibration_style_read,
+	.proc_write = proc_vibration_style_write,
+	.proc_open =  aw_file_open,
 };
 
 static int init_vibrator_proc(struct aw_haptic *aw_haptic)

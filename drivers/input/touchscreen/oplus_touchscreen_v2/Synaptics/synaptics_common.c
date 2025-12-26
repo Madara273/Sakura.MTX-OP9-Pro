@@ -553,14 +553,14 @@ static int RT251_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_RT251_read_func, PDE_DATA(inode));
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-static const struct proc_ops tp_RT251_proc_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+static const struct proc_ops tp_RT251_proc_ops = {
 	.proc_open  = RT251_open,
 	.proc_read  = seq_read,
 	.proc_release = single_release,
 };
 #else
-static const struct file_operations tp_RT251_proc_fops = {
+static const struct file_operations tp_RT251_proc_ops = {
 	.owner = THIS_MODULE,
 	.open  = RT251_open,
 	.read  = seq_read,
@@ -600,14 +600,14 @@ static int RT76_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_RT76_read_func, PDE_DATA(inode));
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-static const struct proc_ops tp_RT76_proc_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+static const struct proc_ops tp_RT76_proc_ops = {
 	.proc_open  = RT76_open,
 	.proc_read  = seq_read,
 	.proc_release = single_release,
 };
 #else
-static const struct file_operations tp_RT76_proc_fops = {
+static const struct file_operations tp_RT76_proc_ops = {
 	.owner = THIS_MODULE,
 	.open  = RT76_open,
 	.read  = seq_read,
@@ -656,14 +656,14 @@ static int DRT_open(struct inode *inode, struct file *file)
 	return single_open(file, tp_DRT_read_func, PDE_DATA(inode));
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-static const struct proc_ops tp_DRT_proc_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+static const struct proc_ops tp_DRT_proc_ops = {
 	.proc_open  = DRT_open,
 	.proc_read  = seq_read,
 	.proc_release = single_release,
 };
 #else
-static const struct file_operations tp_DRT_proc_fops = {
+static const struct file_operations tp_DRT_proc_ops = {
 	.owner = THIS_MODULE,
 	.open  = DRT_open,
 	.read  = seq_read,
@@ -727,14 +727,14 @@ static ssize_t proc_touchfilter_control_write(struct file *file,
 	return count;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-static const struct proc_ops touch_filter_proc_fops = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+static const struct proc_ops touch_filter_proc_ops = {
 	.proc_read  = proc_touchfilter_control_read,
 	.proc_write = proc_touchfilter_control_write,
 	.proc_open  = simple_open,
 };
 #else
-static const struct file_operations touch_filter_proc_fops = {
+static const struct file_operations touch_filter_proc_ops = {
 	.read  = proc_touchfilter_control_read,
 	.write = proc_touchfilter_control_write,
 	.open  = simple_open,
@@ -753,7 +753,7 @@ int synaptics_create_proc(struct touchpanel_data *ts,
 
 	/* show RT251 interface*/
 	prEntry_tmp = proc_create_data("RT251", 0666, ts->prEntry_debug_tp,
-				       &tp_RT251_proc_fops, ts);
+				       &tp_RT251_proc_ops, ts);
 
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
@@ -762,7 +762,7 @@ int synaptics_create_proc(struct touchpanel_data *ts,
 
 	/* show RT76 interface*/
 	prEntry_tmp = proc_create_data("RT76", 0666, ts->prEntry_debug_tp,
-				       &tp_RT76_proc_fops, ts);
+				       &tp_RT76_proc_ops, ts);
 
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
@@ -770,7 +770,7 @@ int synaptics_create_proc(struct touchpanel_data *ts,
 	}
 
 	prEntry_tmp = proc_create_data("DRT", 0666, ts->prEntry_debug_tp,
-				       &tp_DRT_proc_fops, ts);
+				       &tp_DRT_proc_ops, ts);
 
 	if (prEntry_tmp == NULL) {
 		ret = -ENOMEM;
@@ -779,7 +779,7 @@ int synaptics_create_proc(struct touchpanel_data *ts,
 
 	if (ts->face_detect_support) {
 		prEntry_tmp = proc_create_data("touch_filter", 0666, ts->prEntry_tp,
-					       &touch_filter_proc_fops, ts);
+					       &touch_filter_proc_ops, ts);
 
 		if (prEntry_tmp == NULL) {
 			ret = -ENOMEM;

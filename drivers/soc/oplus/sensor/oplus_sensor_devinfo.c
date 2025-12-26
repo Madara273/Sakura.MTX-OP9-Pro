@@ -1263,84 +1263,82 @@ static ssize_t dev_coef_write_proc(struct file *file, const char __user *buf,
 	return count;
 }
 
-
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
-static const struct proc_ops als_type_fops = {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static const struct proc_ops als_type_ops = {
 	.proc_read = als_type_read_proc,
 };
 
-static const struct proc_ops red_max_lux_fops = {
+static const struct proc_ops red_max_lux_ops = {
 	.proc_read = red_max_lux_read_proc,
 	.proc_write = red_max_lux_write_proc,
 };
 
-static const struct proc_ops white_max_lux_fops = {
+static const struct proc_ops white_max_lux_ops = {
 	.proc_read = white_max_lux_read_proc,
 	.proc_write = white_max_lux_write_proc,
 };
 
-static const struct proc_ops blue_max_lux_fops = {
+static const struct proc_ops blue_max_lux_ops = {
 	.proc_read = blue_max_lux_read_proc,
 	.proc_write = blue_max_lux_write_proc,
 };
 
-static const struct proc_ops green_max_lux_fops = {
+static const struct proc_ops green_max_lux_ops = {
 	.proc_read = green_max_lux_read_proc,
 	.proc_write = green_max_lux_write_proc,
 };
 
-static const struct proc_ops cali_coe_fops = {
+static const struct proc_ops cali_coe_ops = {
 	.proc_read = cali_coe_read_proc,
 	.proc_write = cali_coe_write_proc,
 };
 
-static const struct proc_ops row_coe_fops = {
+static const struct proc_ops row_coe_ops = {
 	.proc_read = row_coe_read_proc,
 	.proc_write = row_coe_write_proc,
 };
 
-static const struct proc_ops dev_coef_fops = {
+static const struct proc_ops dev_coef_ops = {
 	.proc_read = dev_coef_read_proc,
 	.proc_write = dev_coef_write_proc,
 };
 
 #else
-static struct file_operations als_type_fops = {
+static struct file_operations als_type_ops = {
 	.read = als_type_read_proc,
 };
 
-static struct file_operations red_max_lux_fops = {
+static struct file_operations red_max_lux_ops = {
 	.read = red_max_lux_read_proc,
 	.write = red_max_lux_write_proc,
 };
 
-static struct file_operations white_max_lux_fops = {
+static struct file_operations white_max_lux_ops = {
 	.read = white_max_lux_read_proc,
 	.write = white_max_lux_write_proc,
 };
 
-static struct file_operations blue_max_lux_fops = {
+static struct file_operations blue_max_lux_ops = {
 	.read = blue_max_lux_read_proc,
 	.write = blue_max_lux_write_proc,
 };
 
-static struct file_operations green_max_lux_fops = {
+static struct file_operations green_max_lux_ops = {
 	.read = green_max_lux_read_proc,
 	.write = green_max_lux_write_proc,
 };
 
-static struct file_operations cali_coe_fops = {
+static struct file_operations cali_coe_ops = {
 	.read = cali_coe_read_proc,
 	.write = cali_coe_write_proc,
 };
 
-static struct file_operations row_coe_fops = {
+static struct file_operations row_coe_ops = {
 	.read = row_coe_read_proc,
 	.write = row_coe_write_proc,
 };
 
-static struct file_operations dev_coef_fops = {
+static struct file_operations dev_coef_ops = {
 	.read = dev_coef_read_proc,
 	.write = dev_coef_write_proc,
 };
@@ -1367,7 +1365,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("red_max_lux", 0666, gdata->proc_oplus_als,
-			&red_max_lux_fops);
+			&red_max_lux_ops);
 
 	if (!pentry) {
 		pr_err("create red_max_lux proc failed.\n");
@@ -1376,7 +1374,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("green_max_lux", 0666, gdata->proc_oplus_als,
-			&green_max_lux_fops);
+			&green_max_lux_ops);
 
 	if (!pentry) {
 		pr_err("create green_max_lux proc failed.\n");
@@ -1385,7 +1383,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("blue_max_lux", 0666, gdata->proc_oplus_als,
-			&blue_max_lux_fops);
+			&blue_max_lux_ops);
 
 	if (!pentry) {
 		pr_err("create blue_max_lux proc failed.\n");
@@ -1394,7 +1392,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("white_max_lux", 0666, gdata->proc_oplus_als,
-			&white_max_lux_fops);
+			&white_max_lux_ops);
 
 	if (!pentry) {
 		pr_err("create white_max_lux proc failed.\n");
@@ -1403,7 +1401,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("cali_coe", 0666, gdata->proc_oplus_als,
-			&cali_coe_fops);
+			&cali_coe_ops);
 
 	if (!pentry) {
 		pr_err("create cali_coe proc failed.\n");
@@ -1412,7 +1410,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("row_coe", 0666, gdata->proc_oplus_als,
-			&row_coe_fops);
+			&row_coe_ops);
 
 	if (!pentry) {
 		pr_err("create row_coe proc failed.\n");
@@ -1421,7 +1419,7 @@ static int oplus_als_cali_data_init(void)
 	}
 
 	pentry = proc_create("dev_coef", 0666, gdata->proc_oplus_als,
-			&dev_coef_fops);
+			&dev_coef_ops);
 
 	if (!pentry) {
 		pr_err("create dev_coef_l2h proc failed.\n");
@@ -1431,10 +1429,10 @@ static int oplus_als_cali_data_init(void)
 
 
 	pentry = proc_create("als_type", 0666, gdata->proc_oplus_als,
-			&als_type_fops);
+			&als_type_ops);
 
 	if (!pentry) {
-		pr_err("create als_type_fops proc failed.\n");
+		pr_err("create als_type_ops proc failed.\n");
 		rc = -EFAULT;
 		return rc;
 	}

@@ -7844,11 +7844,11 @@ static ssize_t proc_vibration_style_write(struct file *filp, const char __user *
 	return count;
 }
 
-static const struct file_operations proc_vibration_style_ops = {
-	.read = proc_vibration_style_read,
-	.write = proc_vibration_style_write,
-	.open =  aw8697_file_open,
-	.owner = THIS_MODULE,
+static const struct proc_ops proc_vibration_style_ops = {
+	.proc_read    = proc_vibration_style_read,
+	.proc_write   = proc_vibration_style_write,
+	.proc_open    = aw8697_file_open,
+	.proc_release = aw8697_file_release,
 };
 
 static ssize_t aw8697_file_write(struct file* filp, const char* buff, size_t len, loff_t* off)
