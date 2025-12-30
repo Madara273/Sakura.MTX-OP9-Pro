@@ -338,7 +338,7 @@ static int recover_inode(struct inode *inode, struct page *page)
 }
 
 static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head,
-				bool check_only)
+				bool check_only, bool *new_inode)
 {
 	struct curseg_info *curseg;
 	struct page *page = NULL;
@@ -395,6 +395,8 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head,
 			if (IS_ERR(entry)) {
 				err = PTR_ERR(entry);
 				if (err == -ENOENT) {
+					if (check_only)
+						*new_inode = true;
 					err = 0;
 					goto next;
 				}
@@ -781,63 +783,64 @@ next:
 
 int f2fs_recover_fsync_data(struct f2fs_sb_info *sbi, bool check_only)
 {
-	struct list_head inode_list, tmp_inode_list;
-	struct list_head dir_list;
-	int err;
-	int ret = 0;
-	unsigned long s_flags = sbi->sb->s_flags;
-	bool need_writecp = false;
-	bool fix_curseg_write_pointer = false;
+        struct list_head inode_list, tmp_inode_list;
+        struct list_head dir_list;
+        int err;
+        int ret = 0;
+        unsigned long s_flags = sbi->sb->s_flags;
+        bool need_writecp = false;
+        bool fix_curseg_write_pointer = false;
+        bool new_inode = false;
 #ifdef CONFIG_QUOTA
-	int quota_enabled;
+        int quota_enabled;
 #endif
 
-	if (s_flags & SB_RDONLY) {
-		f2fs_info(sbi, "recover fsync data on readonly fs");
-		sbi->sb->s_flags &= ~SB_RDONLY;
-	}
+        if (s_flags & SB_RDONLY) {
+                f2fs_info(sbi, "recover fsync data on readonly fs");
+                sbi->sb->s_flags &= ~SB_RDONLY;
+        }
 
 #ifdef CONFIG_QUOTA
-	/* Needed for iput() to work correctly and not trash data */
-	sbi->sb->s_flags |= SB_ACTIVE;
-	/* Turn on quotas so that they are updated correctly */
-	quota_enabled = f2fs_enable_quota_files(sbi, s_flags & SB_RDONLY);
+        /* Needed for iput() to work correctly and not trash data */
+        sbi->sb->s_flags |= SB_ACTIVE;
+        /* Turn on quotas so that they are updated correctly */
+        quota_enabled = f2fs_enable_quota_files(sbi, s_flags & SB_RDONLY);
 #endif
 
-	fsync_entry_slab = f2fs_kmem_cache_create("f2fs_fsync_inode_entry",
-			sizeof(struct fsync_inode_entry));
-	if (!fsync_entry_slab) {
-		err = -ENOMEM;
-		goto out;
-	}
+        fsync_entry_slab = f2fs_kmem_cache_create("f2fs_fsync_inode_entry",
+                        sizeof(struct fsync_inode_entry));
+        if (!fsync_entry_slab) {
+                err = -ENOMEM;
+                goto out;
+        }
 
-	INIT_LIST_HEAD(&inode_list);
-	INIT_LIST_HEAD(&tmp_inode_list);
-	INIT_LIST_HEAD(&dir_list);
+        INIT_LIST_HEAD(&inode_list);
+        INIT_LIST_HEAD(&tmp_inode_list);
+        INIT_LIST_HEAD(&dir_list);
 
-	/* prevent checkpoint */
-	down_write(&sbi->cp_global_sem);
+        /* prevent checkpoint */
+        down_write(&sbi->cp_global_sem);
 
-	/* step #1: find fsynced inode numbers */
-	err = find_fsync_dnodes(sbi, &inode_list, check_only);
-	if (err || list_empty(&inode_list))
-		goto skip;
+        /* step #1: find fsynced inode numbers */
+        err = find_fsync_dnodes(sbi, &inode_list, check_only, &new_inode);
+        if (err < 0 || (list_empty(&inode_list) && (!check_only || !new_inode)))
+                goto skip;
 
-	if (check_only) {
-		ret = 1;
-		goto skip;
-	}
+        if (check_only) {
+                ret = 1;
+                goto skip;
+        }
 
-	need_writecp = true;
+        need_writecp = true;
 
-	/* step #2: recover data */
-	err = recover_data(sbi, &inode_list, &tmp_inode_list, &dir_list);
-	if (!err)
-		f2fs_bug_on(sbi, !list_empty(&inode_list));
-	else {
-		/* restore s_flags to let iput() trash data */
-		sbi->sb->s_flags = s_flags;
-	}
+        /* step #2: recover data */
+        err = recover_data(sbi, &inode_list, &tmp_inode_list, &dir_list);
+        if (!err)
+                f2fs_bug_on(sbi, !list_empty(&inode_list));
+        else {
+                /* restore s_flags to let iput() trash data */
+                sbi->sb->s_flags = s_flags;
+        }
 skip:
 	fix_curseg_write_pointer = !check_only || list_empty(&inode_list);
 
