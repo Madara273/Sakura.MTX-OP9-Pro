@@ -1780,28 +1780,33 @@ restore_flag:
 	return err;
 }
 
-static void f2fs_enable_checkpoint(struct f2fs_sb_info *sbi)
+static int f2fs_enable_checkpoint(struct f2fs_sb_info *sbi)
 {
-	int retry = DEFAULT_RETRY_IO_COUNT;
+        int retry = DEFAULT_RETRY_IO_COUNT;
+        int ret;
 
-	/* we should flush all the data to keep data consistency */
-	do {
-		sync_inodes_sb(sbi->sb);
-		cond_resched();
-		congestion_wait(BLK_RW_ASYNC, DEFAULT_IO_TIMEOUT);
-	} while (get_pages(sbi, F2FS_DIRTY_DATA) && retry--);
+        /* we should flush all the data to keep data consistency */
+        do {
+                sync_inodes_sb(sbi->sb);
+                cond_resched();
+                congestion_wait(BLK_RW_ASYNC, DEFAULT_IO_TIMEOUT);
+        } while (get_pages(sbi, F2FS_DIRTY_DATA) && retry--);
 
-	if (unlikely(retry < 0))
-		f2fs_warn(sbi, "checkpoint=enable has some unwritten data.");
+        if (unlikely(retry < 0))
+                f2fs_warn(sbi, "checkpoint=enable has some unwritten data.");
 
-	down_write(&sbi->gc_lock);
-	f2fs_dirty_to_prefree(sbi);
+        down_write(&sbi->gc_lock);
+        f2fs_dirty_to_prefree(sbi);
 
-	clear_sbi_flag(sbi, SBI_CP_DISABLED);
-	set_sbi_flag(sbi, SBI_IS_DIRTY);
-	up_write(&sbi->gc_lock);
+        clear_sbi_flag(sbi, SBI_CP_DISABLED);
+        set_sbi_flag(sbi, SBI_IS_DIRTY);
+        up_write(&sbi->gc_lock);
 
-	f2fs_sync_fs(sbi->sb, 1);
+        ret = f2fs_sync_fs(sbi->sb, 1);
+        if (ret)
+                f2fs_err(sbi, "%s sync_fs failed, ret: %d", __func__, ret);
+
+        return ret;
 }
 
 static int f2fs_remount(struct super_block *sb, int *flags, char *data)
@@ -1946,7 +1951,9 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 			if (err)
 				goto restore_gc;
 		} else {
-			f2fs_enable_checkpoint(sbi);
+			err = f2fs_enable_checkpoint(sbi);
+			if (err)
+				goto restore_gc;
 		}
 	}
 
@@ -3845,13 +3852,12 @@ reset_checkpoint:
 	/* f2fs_recover_fsync_data() cleared this already */
 	clear_sbi_flag(sbi, SBI_POR_DOING);
 
-	if (test_opt(sbi, DISABLE_CHECKPOINT)) {
+	if (test_opt(sbi, DISABLE_CHECKPOINT))
 		err = f2fs_disable_checkpoint(sbi);
-		if (err)
-			goto sync_free_meta;
-	} else if (is_set_ckpt_flags(sbi, CP_DISABLED_FLAG)) {
-		f2fs_enable_checkpoint(sbi);
-	}
+	else if (is_set_ckpt_flags(sbi, CP_DISABLED_FLAG))
+		err = f2fs_enable_checkpoint(sbi);
+	if (err)
+		goto sync_free_meta;
 
 	/*
 	 * If filesystem is not mounted as read-only then
