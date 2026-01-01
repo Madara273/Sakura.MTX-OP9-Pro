@@ -17,6 +17,7 @@ config ZRAM
 config ZRAM_BACKEND_LZ4
 	bool "lz4 compression support"
 	depends on ZRAM
+	default y
 	select LZ4_COMPRESS
 	select LZ4_DECOMPRESS
 
@@ -29,6 +30,7 @@ config ZRAM_BACKEND_LZ4HC
 config ZRAM_BACKEND_ZSTD
 	bool "zstd compression support"
 	depends on ZRAM
+	default y
 	select ZSTD_COMPRESS
 	select ZSTD_DECOMPRESS
 
