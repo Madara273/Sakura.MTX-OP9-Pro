@@ -91,7 +91,6 @@
 #include <asm/unistd.h>
 
 #include <net/compat.h>
-#include <net/mptcp.h>
 #include <net/wext.h>
 #include <net/cls_cgroup.h>
 
@@ -1356,7 +1355,6 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	int err;
 	struct socket *sock;
 	const struct net_proto_family *pf;
-	int old_protocol = protocol;
 
 	/*
 	 *      Check protocol is in range
@@ -1376,9 +1374,6 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 			     current->comm);
 		family = PF_PACKET;
 	}
-
-	if (old_protocol == IPPROTO_MPTCP)
-		protocol = IPPROTO_TCP;
 
 	err = security_socket_create(family, type, protocol, kern);
 	if (err)
@@ -1428,12 +1423,6 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
 		goto out_module_put;
-
-#ifdef CONFIG_MPTCP
-	if (sysctl_mptcp_enabled && old_protocol == IPPROTO_MPTCP &&
-	    type == SOCK_STREAM && (family == AF_INET || family == AF_INET6))
-		mptcp_enable_sock(sock->sk);
-#endif
 
 	/*
 	 * Now to bump the refcnt of the [loadable] module that owns this
