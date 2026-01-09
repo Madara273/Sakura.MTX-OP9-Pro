@@ -5499,7 +5499,7 @@ static void selinux_sctp_sk_clone(struct sctp_endpoint *ep, struct sock *sk,
 static int selinux_inet_conn_request(const struct sock *sk, struct sk_buff *skb,
 				     struct request_sock *req)
 {
-	struct sk_security_struct *sksec = sk->sk_security;
+	const struct sk_security_struct *sksec = sk->sk_security;
 	int err;
 	u16 family = req->rsk_ops->family;
 	u32 connsid;
