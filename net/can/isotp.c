@@ -1301,7 +1301,7 @@ static int isotp_getname(struct socket *sock, struct sockaddr *uaddr,
 #endif
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
 #define copy_from_user copy_from_sockptr
 static int isotp_setsockopt_locked(struct socket *sock, int level, int optname,
 				   sockptr_t optval, unsigned int optlen)
@@ -1402,7 +1402,7 @@ static int isotp_setsockopt_locked(struct socket *sock, int level, int optname,
 	return ret;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,4,0)
 static int isotp_setsockopt(struct socket *sock, int level, int optname,
 			    sockptr_t optval, unsigned int optlen)
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
