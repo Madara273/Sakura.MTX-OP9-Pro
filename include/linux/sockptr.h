@@ -31,7 +31,7 @@ static inline sockptr_t KERNEL_SOCKPTR(void *p)
 
 static inline sockptr_t USER_SOCKPTR(void __user *p)
 {
-	return (sockptr_t) { .user = p };
+	return (sockptr_t) { .user = p, .is_kernel = false };
 }
 
 static inline bool sockptr_is_null(sockptr_t sockptr)
