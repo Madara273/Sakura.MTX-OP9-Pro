@@ -7012,7 +7012,7 @@ static int __napi_poll(struct napi_struct *n, bool *repoll)
 			 */
 			napi_schedule(n);
 		}
-		goto out_unlock;
+		return work;
 	}
 
 	if (n->gro_bitmask) {
