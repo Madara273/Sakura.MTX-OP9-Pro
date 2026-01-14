@@ -242,6 +242,7 @@ int exfat_get_cluster(struct inode *inode, unsigned int cluster,
 {
 	struct super_block *sb = inode->i_sb;
 	struct exfat_inode_info *ei = EXFAT_I(inode);
+	struct buffer_head *bh = NULL;
 	struct exfat_cache_id cid;
 	unsigned int content, fclus;
 
@@ -269,7 +270,7 @@ int exfat_get_cluster(struct inode *inode, unsigned int cluster,
 		return 0;
 
 	while (fclus < cluster) {
-		if (exfat_ent_get(sb, *dclus, &content, NULL))
+		if (exfat_ent_get(sb, *dclus, &content, &bh))
 			return -EIO;
 
 		*last_dclus = *dclus;
@@ -283,6 +284,7 @@ int exfat_get_cluster(struct inode *inode, unsigned int cluster,
 			cache_init(&cid, fclus, *dclus);
 	}
 
+	brelse(bh);
 	exfat_cache_add(inode, &cid);
 	return 0;
 }
