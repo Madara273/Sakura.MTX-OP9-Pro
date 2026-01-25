@@ -4,6 +4,7 @@
 #
 config IP_MULTICAST
 	bool "IP: multicasting"
+	default y
 	help
 	  This is code for addressing several networked computers at once,
 	  enlarging your kernel by about 2 KB. You need multicasting if you
@@ -14,6 +15,7 @@ config IP_MULTICAST
 
 config IP_ADVANCED_ROUTER
 	bool "IP: advanced router"
+	default y
 	---help---
 	  If you intend to run your Linux box mostly as a router, i.e. as a
 	  computer that forwards and redistributes network packets, say Y; you
@@ -80,6 +82,7 @@ config IP_MULTIPLE_TABLES
 config IP_ROUTE_MULTIPATH
 	bool "IP: equal cost multipath"
 	depends on IP_ADVANCED_ROUTER
+	default y
 	help
 	  Normally, the routing tables specify a single action to be taken in
 	  a deterministic manner for a given packet. If you say Y here
