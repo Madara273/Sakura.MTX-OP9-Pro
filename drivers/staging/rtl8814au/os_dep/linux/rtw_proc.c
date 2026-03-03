@@ -79,7 +79,7 @@ inline struct proc_dir_entry *rtw_proc_create_dir(const char *name, struct proc_
 
 	return entry;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 inline struct proc_dir_entry *rtw_proc_create_entry(const char *name, struct proc_dir_entry *parent,
 	const struct proc_ops *fops, void * data)
 #else
@@ -264,7 +264,7 @@ static ssize_t rtw_drv_proc_write(struct file *file, const char __user *buffer, 
 
 	return -EROFS;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_drv_proc_seq_fops = {
 //	.proc_owner = THIS_MODULE,
 	.proc_open = rtw_drv_proc_open,
@@ -283,7 +283,7 @@ static const struct file_operations rtw_drv_proc_seq_fops = {
 	.write = rtw_drv_proc_write,
 };
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_drv_proc_sseq_fops = {
 	//.owner = THIS_MODULE,
 	.proc_open = rtw_drv_proc_open,
@@ -4600,7 +4600,7 @@ static ssize_t rtw_adapter_proc_write(struct file *file, const char __user *buff
 
 	return -EROFS;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_adapter_proc_seq_fops = {
 	//.owner = THIS_MODULE,
 	.proc_open = rtw_adapter_proc_open,
@@ -4619,7 +4619,7 @@ static const struct file_operations rtw_adapter_proc_seq_fops = {
 	.write = rtw_adapter_proc_write,
 };
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_adapter_proc_sseq_fops = {
 	//.owner = THIS_MODULE,
 	.proc_open = rtw_adapter_proc_open,
@@ -4792,7 +4792,7 @@ static ssize_t rtw_odm_proc_write(struct file *file, const char __user *buffer, 
 
 	return -EROFS;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_odm_proc_seq_fops = {
 //	.owner = THIS_MODULE,
 	.proc_open = rtw_odm_proc_open,
@@ -4811,7 +4811,7 @@ static const struct file_operations rtw_odm_proc_seq_fops = {
 	.write = rtw_odm_proc_write,
 };
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_odm_proc_sseq_fops = {
 	//.owner = THIS_MODULE,
 	.proc_open = rtw_odm_proc_open,
@@ -4960,7 +4960,7 @@ static ssize_t rtw_mcc_proc_write(struct file *file, const char __user *buffer, 
 
 	return -EROFS;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_mcc_proc_seq_fops = {
 	//.owner = THIS_MODULE,
 	.proc_open = rtw_mcc_proc_open,
@@ -4979,7 +4979,7 @@ static const struct file_operations rtw_mcc_proc_seq_fops = {
 	.write = rtw_mcc_proc_write,
 };
 #endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
 static const struct proc_ops rtw_mcc_proc_sseq_fops = {
 	//.owner = THIS_MODULE,
 	.proc_open = rtw_mcc_proc_open,
