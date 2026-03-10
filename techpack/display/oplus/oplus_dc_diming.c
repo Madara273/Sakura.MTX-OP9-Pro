@@ -1155,7 +1155,7 @@ int oplus_display_panel_set_dimlayer_enable(void *data)
 		} else {
 			err = drm_crtc_vblank_get(dsi_connector->state->crtc);
 			if (err) {
-				pr_err("failed to get crtc vblank, error=%d\n", err);
+				pr_debug("failed to get crtc vblank, error=%d\n", err);
 			} else {
 				/* do vblank put after 7 frames */
 				oplus_datadimming_vblank_count = 7;

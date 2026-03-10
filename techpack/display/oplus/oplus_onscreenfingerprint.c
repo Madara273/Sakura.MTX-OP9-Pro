@@ -762,7 +762,7 @@ int oplus_display_panel_set_dimlayer_hbm(void *data)
 	} else {
 		err = drm_crtc_vblank_get(dsi_connector->state->crtc);
 		if (err) {
-			pr_err("failed to get crtc vblank, error=%d\n", err);
+			pr_debug("failed to get crtc vblank, error=%d\n", err);
 		} else {
 			/* do vblank put after 5 frames */
 			oplus_dimlayer_hbm_vblank_count = 5;
@@ -826,7 +826,7 @@ int oplus_display_panel_notify_fp_press(void *data)
 
 	vblank_get = drm_crtc_vblank_get(dsi_connector->state->crtc);
 	if (vblank_get) {
-		pr_err("failed to get crtc vblank\n", vblank_get);
+		pr_debug("failed to get crtc vblank\n", vblank_get);
 	}
 	oplus_onscreenfp_status = onscreenfp_status;
 
