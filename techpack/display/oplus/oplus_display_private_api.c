@@ -1955,7 +1955,7 @@ static ssize_t oplus_display_set_dimlayer_enable(struct kobject *obj,
 			err = drm_crtc_vblank_get(dsi_connector->state->crtc);
 
 			if (err) {
-				pr_err("failed to get crtc vblank, error=%d\n", err);
+				pr_debug("failed to get crtc vblank, error=%d\n", err);
 
 			} else {
 				/* do vblank put after 7 frames */
@@ -2017,7 +2017,7 @@ static ssize_t oplus_display_set_dimlayer_hbm(struct kobject *obj,
 		err = drm_crtc_vblank_get(dsi_connector->state->crtc);
 
 		if (err) {
-			pr_err("failed to get crtc vblank, error=%d\n", err);
+			pr_debug("failed to get crtc vblank, error=%d\n", err);
 
 		} else {
 			/* do vblank put after 5 frames */
@@ -2219,7 +2219,7 @@ static ssize_t oplus_display_notify_fp_press(struct kobject *obj,
 	vblank_get = drm_crtc_vblank_get(dsi_connector->state->crtc);
 
 	if (vblank_get) {
-		pr_err("failed to get crtc vblank\n", vblank_get);
+		pr_debug("failed to get crtc vblank\n", vblank_get);
 	}
 
 	oplus_onscreenfp_status = onscreenfp_status;
