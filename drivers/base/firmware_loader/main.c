@@ -483,6 +483,7 @@ static const char * const fw_path[] = {
 	fw_path_para[7],
 	fw_path_para[8],
 	fw_path_para[9],
+	"/odm/firmware",
 	"/vendor/firmware",
 	"/vendor/firmware_mnt/image",
 	"/firmware/image",
