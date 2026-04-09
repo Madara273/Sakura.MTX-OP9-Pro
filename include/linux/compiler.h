@@ -327,7 +327,7 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 
 #define __READ_ONCE(x, check)						\
 ({									\
-	union { typeof(x) __val; char __c[1]; } __u;			\
+	union { typeof(x) __val; char __c[1]; } __u = { 0 };		\
 	if (check)							\
 		__read_once_size(&(x), __u.__c, sizeof(x));		\
 	else								\
