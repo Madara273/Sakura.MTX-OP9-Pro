@@ -8572,6 +8572,7 @@ static int msm_rx_tx_codec_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_ignore_suspend(dapm, "AMIC4");
 	snd_soc_dapm_sync(dapm);
 
+#if IS_ENABLED(CONFIG_SND_SOC_WCD937X)
 	if (!strncmp(component->driver->name, WCD937X_DRV_NAME,
 	    strlen(WCD937X_DRV_NAME))) {
 		wcd937x_info_create_codec_entry(pdata->codec_root, component);
@@ -8588,8 +8589,10 @@ static int msm_rx_tx_codec_init(struct snd_soc_pcm_runtime *rtd)
 				ARRAY_SIZE(msm_int_wcd9375_snd_controls));
 		bolero_set_port_map(bolero_component,
 			ARRAY_SIZE(sm_port_map_wcd937x), sm_port_map_wcd937x);
-	} else if (!strncmp(component->driver->name, WCD938X_DRV_NAME,
-		   strlen(WCD938X_DRV_NAME))) {
+	} else
+#endif
+		if (!strncmp(component->driver->name, WCD938X_DRV_NAME,
+				   strlen(WCD938X_DRV_NAME))) {
 		wcd938x_info_create_codec_entry(pdata->codec_root, component);
 
 		codec_variant = wcd938x_get_codec_variant(component);
