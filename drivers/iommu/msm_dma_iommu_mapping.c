@@ -142,6 +142,7 @@ void msm_dma_unmap_all_for_dev(struct device *dev)
 	}
 	mutex_unlock(&dev->iommu_map_lock);
 }
+EXPORT_SYMBOL(msm_dma_unmap_all_for_dev);
 
 void msm_dma_buf_freed(struct msm_iommu_data *data)
 {

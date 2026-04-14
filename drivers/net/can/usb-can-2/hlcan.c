@@ -1,5 +1,5 @@
 /*
- * hl340.c - CAN driver interface for
+ * hl340.c - CAN driver interface for 
  *
  * This file is derived from linux/drivers/net/can/slcan.c
  *
@@ -127,7 +127,7 @@ static struct net_device **slcan_devs;
 
 #define IS_EXT_ID(type)(CHECK_BIT(type, 5))
 #define IS_REMOTE(type)(CHECK_BIT(type, 4))
-
+		
 /* checks if bit 7 and 6 is set */
 #define IS_DATA_PACKAGE(type) ({ \
 		((type >> 6) ^ 3) == 0;})
@@ -166,7 +166,7 @@ static struct net_device **slcan_devs;
  *  0 = 11 bit frame
  *  1 = 29 bit frame
  * bit 4:
- *  0 = data frame
+ *  0 = data frame 
  *  1 = remote frame
  * bit 0-3: dlc
  *
@@ -272,13 +272,13 @@ static void hlcan_update_rstate(struct slcan *sl)
 		/* Data frame... */
 		int ext_id = IS_EXT_ID(sl->rbuff[1]) ? 4 : 2;
 		int dlc = GET_DLC(sl->rbuff[1]);
-
+		
 		sl->rexpected =	1 + // HLCAN_PACKET_START
 			1 + // type byte
 			ext_id +
-			dlc +
+			dlc + 
 			1; // HLCAN_PACKET_END
-
+		
 		if (sl->rcount >= sl->rexpected){
 			sl->rstate = COMPLETE;
 		} else {
@@ -311,7 +311,7 @@ static void slcan_unesc(struct slcan *sl, unsigned char s)
 		&& sl->rcount < sl->rexpected) {
 		return;
 	}
-
+	
 	hlcan_update_rstate(sl);
 	switch(sl->rstate) {
 		case COMPLETE:
@@ -341,7 +341,7 @@ static void slc_encaps(struct slcan *sl, struct can_frame *cf)
 
 	pos = sl->xbuff;
 	*pos++ = HLCAN_PACKET_START;
-
+	
 	*pos = HLCAN_FRAME_PREFIX;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 13, 0)
         *pos |= cf->can_dlc;
@@ -584,15 +584,14 @@ static void slc_sync(void)
 	}
 }
 
-
-static int hlcan_do_set_mode(struct net_device *dev, enum can_mode mode){
-	int ret = 0;
+static int hlcan_do_set_mode(struct net_device *dev, enum can_mode mode)
+{
 	struct slcan *sl = netdev_priv(dev);
 
 	switch (mode) {
 	case CAN_MODE_START:
 		sl->can.state = CAN_STATE_ERROR_ACTIVE;
-		return ret;
+		return 0;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -622,19 +621,19 @@ static struct slcan *slc_alloc(void)
 		return NULL;
 
 	sl = netdev_priv(dev);
-
+	
 	dev->netdev_ops = &slc_netdev_ops;
 	// Device does NOT echo on itself
 	// dev->flags |= IFF_ECHO;
 
 	/* this does not actually matter when we use the serial port */
 	/* todo set this to a propper value */
-	sl->can.clock.freq = 3686400000;
+	sl->can.clock.freq = 3686400000; 
 	sl->can.data_bittiming_const = &hlcan_bittiming_const;
 	sl->can.bittiming.bitrate = 800000;
 	sl->can.do_set_mode = hlcan_do_set_mode;
 	sl->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |
-		CAN_CTRLMODE_3_SAMPLES |
+		CAN_CTRLMODE_3_SAMPLES | 
 		CAN_CTRLMODE_FD |
 		CAN_CTRLMODE_LISTENONLY;
 
@@ -696,7 +695,7 @@ static int slcan_open(struct tty_struct *tty)
 	/* OK.  Find a free SLCAN channel to use. */
 	err = -ENFILE;
 	sl = slc_alloc();
-
+	
 	SET_NETDEV_DEV(sl->dev, tty->dev);
 	if (sl == NULL) {
 		err = -ENOMEM;
@@ -809,7 +808,7 @@ static int slcan_ioctl(struct tty_struct *tty, struct file *file,
 		if (sl->mode == 1 || sl->mode == 3){
 			sl->dev->flags |= IFF_ECHO;
 		}
-
+			
 		return 0;
 
 	default:
@@ -820,6 +819,8 @@ static int slcan_ioctl(struct tty_struct *tty, struct file *file,
 #endif
 	}
 }
+
+
 
 static struct tty_ldisc_ops slc_ldisc = {
 	.owner		= THIS_MODULE,
@@ -837,21 +838,9 @@ static struct tty_ldisc_ops slc_ldisc = {
 	.write_wakeup	= slcan_write_wakeup,
 };
 
-/*
- * hlcan_do_init - Initializes the hlcan serial CAN driver.
- * Checks the current CAN mode, allocates memory for device structures,
- * registers the hlcan line discipline, ensures minimum channel count,
- * and initializes synchronization primitives required for operation.
- */
-int hlcan_do_init(void)
+static int __init slcan_init(void)
 {
-	extern int can_mode;
 	int status;
-
-	if (can_mode != 1) {
-		pr_info("hlcan: init skipped due to mode %d\n", can_mode);
-		return 0;
-	}
 
 	if (maxdev < 4)
 		maxdev = 4; /* Sanity */
@@ -867,28 +856,19 @@ int hlcan_do_init(void)
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 14, 0)
 	status = tty_register_ldisc(N_HLCAN, &slc_ldisc);
 #else
-	status = tty_register_ldisc(&slc_ldisc);
+        status = tty_register_ldisc(&slc_ldisc);
 #endif
-	if (status) {
-		pr_err("hlcan: can't register line discipline (err %d)\n", status);
-		kfree(slcan_devs);
-		slcan_devs = NULL;
-		return status;
-	}
 
-	/* Initialize global lock for synchronization */
+	if (status)  {
+		printk(KERN_ERR "hlcan: can't register line discipline\n");
+		kfree(slcan_devs);
+	}
 	spin_lock_init(&global_lock);
 
 	return status;
 }
 
-/*
- * hlcan_do_exit - Shuts down and cleans up the hlcan serial CAN driver.
- * Hangs up any active tty connections, unregisters CAN network devices,
- * frees allocated memory, and unregisters the hlcan line discipline.
- * Ensures proper shutdown even if devices are still asynchronously closing.
- */
-void hlcan_do_exit(void)
+static void __exit slcan_exit(void)
 {
 	unsigned long timeout = jiffies + HZ;
 	struct net_device *dev;
@@ -911,7 +891,6 @@ void hlcan_do_exit(void)
 			dev = slcan_devs[i];
 			if (!dev)
 				continue;
-
 			sl = netdev_priv(dev);
 			spin_lock_bh(&sl->lock);
 			if (sl->tty) {
@@ -924,32 +903,35 @@ void hlcan_do_exit(void)
 
 	/* FIXME: hangup is async so we should wait when doing this second
 	   phase */
+
 	for (i = 0; i < maxdev; i++) {
 		dev = slcan_devs[i];
 		if (!dev)
 			continue;
 
 		slcan_devs[i] = NULL;
+
 		sl = netdev_priv(dev);
-
-		if (sl->tty)
-			pr_err("%s: tty discipline still running\n", dev->name);
-
-		if (sl->candev_registered) {
-			unregister_candev(dev);
-			pr_info("%s: candev unregistered\n", dev->name);
+		if (sl->tty) {
+			printk(KERN_ERR "%s: tty discipline still running\n",
+			       dev->name);
 		}
+
+		if (sl->candev_registered)
+			unregister_candev(dev);
 	}
 
 	kfree(slcan_devs);
 	slcan_devs = NULL;
 
-	/* Unregister the line discipline */
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 14, 0)
 	i = tty_unregister_ldisc(N_HLCAN);
 	if (i)
-		pr_err("hlcan: can't unregister ldisc (err %d)\n", i);
+		printk(KERN_ERR "hlcan: can't unregister ldisc (err %d)\n", i);
 #else
-	tty_unregister_ldisc(&slc_ldisc);
+        tty_unregister_ldisc(&slc_ldisc);
 #endif
 }
+
+module_init(slcan_init);
+module_exit(slcan_exit);

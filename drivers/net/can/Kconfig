@@ -31,6 +31,7 @@ config CAN_VXCAN
 config CAN_SLCAN
 	tristate "Serial / USB serial CAN Adaptors (slcan)"
 	depends on TTY
+	default m
 	---help---
 	  CAN driver for several 'low cost' CAN interfaces that are attached
 	  via serial lines or via USB-to-serial adapters using the LAWICEL
@@ -98,6 +99,7 @@ config CAN_AT91
 config CAN_CAN327
 	tristate "Serial / USB serial ELM327 based OBD-II Interfaces (can327)"
 	depends on TTY
+	default m
 	select CAN_RX_OFFLOAD
 	help
 	  CAN driver for several 'low cost' OBD-II interfaces based on the
