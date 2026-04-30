@@ -198,7 +198,6 @@ uvc_send_response(struct uvc_device *uvc, struct uvc_request_data *data)
 /* --------------------------------------------------------------------------
  * V4L2 ioctls
  */
-
 static int
 uvc_v4l2_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 {

@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/clk/qcom.h>
@@ -2532,6 +2533,13 @@ int a6xx_perfcounter_update(struct adreno_device *adreno_dev,
 	if (select_reg_present) {
 		data[offset + 1] = reg->countable;
 		goto update;
+	}
+
+	/* Ensure there is enough space in the reglist buffer for new pairs */
+	if ((offset + (pending_pairs * 2)) >=
+		(adreno_dev->pwrup_reglist->size / sizeof(u32))) {
+		cpu_gpu_unlock(lock);
+		return -ENOSPC;
 	}
 
 	/* Ensure there is enough space in the reglist buffer for new pairs */
