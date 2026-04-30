@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2011-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/bitfield.h>
