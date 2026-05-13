@@ -531,6 +531,7 @@ static void exit_mm(void)
 	/* more a memory barrier than a real lock */
 	task_lock(current);
 	current->mm = NULL;
+	current->user_dumpable = (get_dumpable(mm) == SUID_DUMP_USER);
 	up_read(&mm->mmap_sem);
 	enter_lazy_tlb(mm, current);
 	task_unlock(current);
