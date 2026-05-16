@@ -1729,12 +1729,9 @@ QDF_STATUS wma_send_injection_frame_to_fw(tp_wma_handle wma_handle,
 
 				mgmt_params.tx_param.mcs_mask =
 					BIT(he_mcs < 12 ? he_mcs : 11);
-				mgmt_params.tx_param.preamble_type = BIT(4); /* HE */
+				mgmt_params.tx_param.preamble_type = 4; /* WMI_PREAMBLE_HE = 4 */
 				mgmt_params.tx_param.nss_mask = BIT(nss - 1);
-				mgmt_params.tx_param.bw_mask =
-					(bw == 3) ? BIT(5) :
-					(bw == 2) ? BIT(4) :
-					(bw == 1) ? BIT(3) : BIT(2);
+				mgmt_params.tx_param.bw_mask = (bw <= 3) ? bw : 0; /* 0=20, 1=40, 2=80, 3=160MHz */
 				mgmt_params.tx_param.retry_limit = 4;
 				mgmt_params.tx_params_valid = true;
 
@@ -1749,12 +1746,9 @@ QDF_STATUS wma_send_injection_frame_to_fw(tp_wma_handle wma_handle,
 
 				mgmt_params.tx_param.mcs_mask =
 					BIT(vht_mcs < 10 ? vht_mcs : 9);
-				mgmt_params.tx_param.preamble_type = BIT(3); /* VHT */
+				mgmt_params.tx_param.preamble_type = 3; /* WMI_PREAMBLE_VHT = 3 */
 				mgmt_params.tx_param.nss_mask = BIT(nss - 1);
-				mgmt_params.tx_param.bw_mask =
-					(bw == 3) ? BIT(5) /* 160MHz */ :
-					(bw == 2) ? BIT(4) /* 80MHz */  :
-					(bw == 1) ? BIT(3) /* 40MHz */  : BIT(2) /* 20MHz */;
+				mgmt_params.tx_param.bw_mask = (bw <= 3) ? bw : 0; /* 0=20, 1=40, 2=80, 3=160MHz */
 				mgmt_params.tx_param.retry_limit = 4;
 				mgmt_params.tx_params_valid = true;
 
@@ -1773,16 +1767,15 @@ QDF_STATUS wma_send_injection_frame_to_fw(tp_wma_handle wma_handle,
 				 */
 				uint8_t mcs_idx = req->tx_rate & 0x7F;
 
-				if (mcs_idx < 12)
+				if (mcs_idx < 12) {
 					mgmt_params.tx_param.mcs_mask = BIT(mcs_idx);
-				else
+				} else {
 					mgmt_params.tx_param.mcs_mask = BIT(7); /* MCS7 fallback */
+					mgmt_params.tx_param.nss_mask = BIT(0);  /* Force NSS1 for fallback */
+				}
 
-				mgmt_params.tx_param.preamble_type = BIT(2); /* HT */
-				mgmt_params.tx_param.nss_mask =
-					BIT(mcs_idx / 8); /* NSS derived from MCS index */
-				mgmt_params.tx_param.bw_mask =
-					(bw == 1) ? BIT(3) /* 40MHz */ : BIT(2) /* 20MHz */;
+				mgmt_params.tx_param.preamble_type = 2; /* WMI_PREAMBLE_HT = 2 */
+				mgmt_params.tx_param.bw_mask = (bw == 1) ? 1 : 0; /* 0=20MHz, 1=40MHz */
 				mgmt_params.tx_param.retry_limit = 4;
 				mgmt_params.tx_params_valid = true;
 
@@ -1834,11 +1827,9 @@ QDF_STATUS wma_send_injection_frame_to_fw(tp_wma_handle wma_handle,
 				if (req->tx_rate == rate_table[i].rate_100kbps) {
 					mgmt_params.tx_param.mcs_mask =
 						rate_table[i].mcs_bit;
-					mgmt_params.tx_param.preamble_type =
-						rate_table[i].preamble ?
-						BIT(1) /* CCK */ : BIT(0) /* OFDM */;
+					mgmt_params.tx_param.preamble_type = rate_table[i].preamble ? 1 : 0; /* 1=CCK, 0=OFDM */
 					mgmt_params.tx_param.nss_mask = BIT(0);
-					mgmt_params.tx_param.bw_mask = BIT(2); /* 20MHz */
+					mgmt_params.tx_param.bw_mask = 0; /* 0 = 20MHz legacy */
 					mgmt_params.tx_params_valid = true;
 					matched = true;
 					break;
