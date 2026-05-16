@@ -647,6 +647,11 @@ void hdd_process_injection_queue_work(void *arg)
 		/* Update timing for processing start */
 		req->process_time = qdf_get_log_timestamp();
 
+		if (!injection_ctx->adapter) {
+			hdd_inject_err("Adapter context missing for session_id=%u", req->session_id);
+			goto cleanup_req;
+		}
+
 		/* Send frame to WMA layer for transmission */
 		if (injection_ctx->wma_handle) {
 			tx_vdev_id = injection_ctx->adapter->vdev_id;
@@ -803,6 +808,7 @@ inject_done:
 
 		hdd_inject_debug("Processed injection request: session_id=%u",
 				 req->session_id);
+cleanup_req:
 
 		/* Cleanup request */
 		if (req->frame_data)
