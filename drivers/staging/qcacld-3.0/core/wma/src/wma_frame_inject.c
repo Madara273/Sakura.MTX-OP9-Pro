@@ -1566,8 +1566,8 @@ QDF_STATUS wma_send_injection_frame_to_fw(tp_wma_handle wma_handle,
 		return QDF_STATUS_E_AGAIN;
 	}
 
-	if (wma_handle->interfaces[vdev_id].vdev->vdev_mlme.des_chan->ch_freq)
-		tx_chanfreq = wma_handle->interfaces[vdev_id].vdev->vdev_mlme.des_chan->ch_freq;
+	if (wma_handle->interfaces[vdev_id].ch_freq)
+		tx_chanfreq = wma_handle->interfaces[vdev_id].ch_freq;
 
 	if (req->frame_len)
 		fc0 = req->frame_data[0];
