@@ -130,8 +130,10 @@ static inline struct bkey *bkey_idx(const struct bkey *k, unsigned int nr_keys)
 /* Enough for a key with 6 pointers */
 #define BKEY_PAD		8
 
-#define BKEY_PADDED(key)					\
-	union { struct bkey key; __u64 key ## _pad[BKEY_PAD]; }
+#define BKEY_PADDED(key) \
+	struct { \
+		char key ## _opaque[sizeof(struct bkey) + BKEY_PAD * sizeof(__u64)]; \
+	} __attribute__((aligned(__alignof__(__u64))))
 
 /* Superblock */
 
