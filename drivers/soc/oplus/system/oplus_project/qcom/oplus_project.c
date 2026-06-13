@@ -310,7 +310,10 @@ bool is_confidential(void)
 {
     init_project_version();
 
-    return g_project?g_project->nDataECDT.Is_confidential:-EINVAL;
+    if (!g_project)
+        return false;
+
+    return g_project->nDataECDT.Is_confidential;
 }
 EXPORT_SYMBOL(is_confidential);
 
