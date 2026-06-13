@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Protect All Block & Power
+#
+# Copyright (C) 2026 秋刀鱼
+#
+
+bbg-y += baseband_guard.o
+bbg-y += tracing/tracing.o
+
+ccflags-y += -I$(srctree)/security/selinux \
+		-I$(srctree)/security/selinux/include \
+		-I$(srctree)/block
+
+ccflags-y += -I$(objtree)/security/selinux \
+		-include $(srctree)/include/uapi/asm-generic/errno.h
+
+BBG_VER  := SakuraMTX
+BBG_REPO := Madara273
+
+ifneq ($(wildcard $(objtree)/security/selinux/flask.h),)
+$(info -- Baseband-guard: flask.h found, skip generation)
+else
+$(info -- Baseband-guard: flask.h not found, starting generation)
+$(shell $(HOSTCC) -I$(srctree)/scripts/selinux/genheaders -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89 -I$(srctree)/include/uapi -I$(srctree)/include -I$(srctree)/security/selinux/include -o $(objtree)/genheaders $(srctree)/scripts/selinux/genheaders/genheaders.c)
+$(shell $(objtree)/genheaders flask.h av_permissions.h)
+$(shell mkdir -p $(objtree)/security/selinux)
+$(shell mv $(objtree)/flask.h $(objtree)/av_permissions.h $(objtree)/security/selinux)
+endif
+
+ifeq ($(shell grep -q "file_ioctl_compat" $(srctree)/include/linux/lsm_hook_defs.h $(srctree)/include/linux/lsm_hooks.h 2>/dev/null && echo true),true)
+	ccflags-y += -DBB_HAS_IOCTL_COMPAT
+endif
+
+ifeq ($(shell grep -q "selinux_state" $(srctree)/security/selinux/include/security.h 2>/dev/null && echo true),true)
+	ccflags-y += -DBB_HAS_SELINUX_STATE
+endif
+
+HAS_DEFINE_LSM := $(shell grep -q "\#define DEFINE_LSM(lsm)" $(srctree)/include/linux/lsm_hooks.h && echo true)
+
+ifeq ($(CONFIG_BBG),y)
+$(info -- BBG version: $(BBG_VER))
+$(info -- BBG repo: $(BBG_REPO))
+ifeq ($(HAS_DEFINE_LSM),true)
+ifneq ($(findstring baseband_guard,$(CONFIG_LSM)),baseband_guard)
+$(error [Baseband-guard] ERROR: baseband_guard is missing in CONFIG_LSM! Check security/Kconfig)
+else
+	ccflags-y += -DBBG_USE_DEFINE_LSM
+endif
+endif
+endif
+
+ccflags-y += -DBBG_VERSION=\"$(BBG_VER)\"
+ccflags-y += -DBBG_REPO=\"$(BBG_REPO)\"
+
+obj-$(CONFIG_BBG) += bbg.o
