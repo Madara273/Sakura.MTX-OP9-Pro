@@ -2746,8 +2746,6 @@ endif
 
 ifeq ($(CONFIG_FEATURE_FRAME_INJECTION_SUPPORT), y)
 cppflags-y += -DFEATURE_FRAME_INJECTION_SUPPORT
-# Enable monitor mode support for frame injection
-CONFIG_FEATURE_MONITOR_MODE_SUPPORT := y
 endif
 
 #Enable NL80211 test mode
