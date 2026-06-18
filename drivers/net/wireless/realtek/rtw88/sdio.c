@@ -144,8 +144,10 @@ static u32 rtw_sdio_to_io_address(struct rtw_dev *rtwdev, u32 addr,
 
 static bool rtw_sdio_use_direct_io(struct rtw_dev *rtwdev, u32 addr)
 {
+	bool might_indirect_under_power_off = rtwdev->chip->id == RTW_CHIP_TYPE_8822C;
+
 	if (!test_bit(RTW_FLAG_POWERON, rtwdev->flags) &&
-	    !rtw_sdio_is_bus_addr(addr))
+	    !rtw_sdio_is_bus_addr(addr) && might_indirect_under_power_off)
 		return false;
 
 	return !rtw_sdio_is_sdio30_supported(rtwdev) ||
@@ -849,8 +851,8 @@ static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
 {
 	const struct rtw_chip_info *chip = rtwdev->chip;
 	unsigned long data_addr, aligned_addr;
+	struct rtw_tx_desc *pkt_desc;
 	size_t offset;
-	u8 *pkt_desc;
 
 	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
 
@@ -876,7 +878,7 @@ static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
 
 	pkt_info->qsel = rtw_sdio_get_tx_qsel(rtwdev, skb, queue);
 
-	rtw_tx_fill_tx_desc(rtwdev, pkt_info, skb);
+	rtw_tx_fill_tx_desc(rtwdev, pkt_info, pkt_desc);
 	rtw_tx_fill_txdesc_checksum(rtwdev, pkt_info, pkt_desc);
 }
 
@@ -977,6 +979,7 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 	u32 pkt_offset, curr_pkt_len;
 	size_t bufsz;
 	u8 *rx_desc;
+	u8 *rx_buf;
 	int ret;
 
 	bufsz = sdio_align_size(rtwsdio->sdio_func, rx_len);
@@ -993,7 +996,9 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 
 	while (true) {
 		rx_desc = skb->data;
-		rtw_rx_query_rx_desc(rtwdev, rx_desc, &pkt_stat, &rx_status);
+		rx_buf = rx_desc + pkt_desc_sz;
+		rtw_rx_query_rx_desc(rtwdev, rx_desc, rx_buf,
+				     &pkt_stat, &rx_status);
 		pkt_offset = pkt_desc_sz + pkt_stat.drv_info_sz +
 			     pkt_stat.shift;
 
@@ -1288,8 +1293,12 @@ static int rtw_sdio_init_tx(struct rtw_dev *rtwdev)
 
 	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
 		skb_queue_head_init(&rtwsdio->tx_queue[i]);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	rtwsdio->tx_handler_data = kmalloc_obj(*rtwsdio->tx_handler_data);
+#else
 	rtwsdio->tx_handler_data = kmalloc(sizeof(*rtwsdio->tx_handler_data),
 					   GFP_KERNEL);
+#endif
 	if (!rtwsdio->tx_handler_data)
 		goto err_destroy_wq;
 

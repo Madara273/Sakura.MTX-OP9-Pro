@@ -29,10 +29,12 @@ obj-$(CONFIG_RTW88_8723DS)	+= rtw8723ds.o
 obj-$(CONFIG_RTW88_8723DU)	+= rtw8723du.o
 obj-$(CONFIG_RTW88_8723X)	+= rtw8723x.o
 
+obj-$(CONFIG_RTW88_8812AE)	+= rtw8812ae.o
 obj-$(CONFIG_RTW88_8812AU)	+= rtw8812au.o
 obj-$(CONFIG_RTW88_8821A)	+= rtw8821a.o rtw8821a_table.o
 obj-$(CONFIG_RTW88_8812A)	+= rtw8812a.o rtw8812a_table.o
 obj-$(CONFIG_RTW88_88XXA)	+= rtw88xxa.o
+obj-$(CONFIG_RTW88_8821AE)	+= rtw8821ae.o
 obj-$(CONFIG_RTW88_8821AU)	+= rtw8821au.o
 obj-$(CONFIG_RTW88_8814A)	+= rtw8814a.o rtw8814a_table.o
 obj-$(CONFIG_RTW88_8814AU)	+= rtw8814au.o
@@ -52,7 +54,7 @@ obj-$(CONFIG_RTW88_8822CE)	+= rtw8822ce.o
 obj-$(CONFIG_RTW88_8822CS)	+= rtw8822cs.o
 obj-$(CONFIG_RTW88_8822CU)	+= rtw8822cu.o
 
-obj-$(CONFIG_RTW88_PCI)		+= rtwpci.o
+obj-$(CONFIG_RTW88_PCI)		+= rtwpci.o pci_old.o
 rtwpci-objs			:= pci.o
 
 obj-$(CONFIG_RTW88_SDIO)	+= rtwsdio.o

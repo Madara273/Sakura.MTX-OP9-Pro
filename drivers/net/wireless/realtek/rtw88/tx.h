@@ -26,7 +26,9 @@ struct rtw_tx_desc {
 #define RTW_TX_DESC_W0_OFFSET GENMASK(23, 16)
 #define RTW_TX_DESC_W0_BMC BIT(24)
 #define RTW_TX_DESC_W0_LS BIT(26)
+#define RTW_TX_DESC_W0_FS BIT(27)
 #define RTW_TX_DESC_W0_DISQSELSEQ BIT(31)
+#define RTW_TX_DESC_W0_OWN BIT(31)
 #define RTW_TX_DESC_W1_MACID GENMASK(7, 0)
 #define RTW_TX_DESC_W1_QSEL GENMASK(12, 8)
 #define RTW_TX_DESC_W1_RATE_ID GENMASK(20, 16)
@@ -53,11 +55,14 @@ struct rtw_tx_desc {
 #define RTW_TX_DESC_W5_DATA_RTS_SHORT BIT(12)
 #define RTW_TX_DESC_W6_SW_DEFINE GENMASK(11, 0)
 #define RTW_TX_DESC_W7_TXDESC_CHECKSUM GENMASK(15, 0)
+#define RTW_TX_DESC_W7_TX_BUFFER_SIZE GENMASK(15, 0)
 #define RTW_TX_DESC_W7_DMA_TXAGG_NUM GENMASK(31, 24)
 #define RTW_TX_DESC_W8_EN_HWSEQ BIT(15)
 #define RTW_TX_DESC_W9_SW_SEQ GENMASK(23, 12)
 #define RTW_TX_DESC_W9_TIM_EN BIT(7)
 #define RTW_TX_DESC_W9_TIM_OFFSET GENMASK(6, 0)
+#define RTW_TX_DESC_W10_TX_BUFFER_ADDRESS GENMASK(31, 0)
+#define RTW_TX_DESC_W12_NEXT_DESC_ADDRESS GENMASK(31, 0)
 
 enum rtw_tx_desc_queue_select {
 	TX_DESC_QSEL_TID0	= 0,
@@ -96,7 +101,8 @@ void rtw_tx_pkt_info_update(struct rtw_dev *rtwdev,
 			    struct ieee80211_sta *sta,
 			    struct sk_buff *skb);
 void rtw_tx_fill_tx_desc(struct rtw_dev *rtwdev,
-			 struct rtw_tx_pkt_info *pkt_info, struct sk_buff *skb);
+			 struct rtw_tx_pkt_info *pkt_info,
+			 struct rtw_tx_desc *tx_desc);
 void rtw_tx_report_enqueue(struct rtw_dev *rtwdev, struct sk_buff *skb, u8 sn);
 void rtw_tx_report_handle(struct rtw_dev *rtwdev, struct sk_buff *skb, int src);
 void rtw_tx_rsvd_page_pkt_info_update(struct rtw_dev *rtwdev,
@@ -116,11 +122,10 @@ enum rtw_tx_queue_type rtw_tx_ac_to_hwq(enum ieee80211_ac_numbers ac);
 enum rtw_tx_queue_type rtw_tx_queue_mapping(struct sk_buff *skb);
 
 static inline
-void fill_txdesc_checksum_common(u8 *txdesc, size_t words)
+void fill_txdesc_checksum_common(struct rtw_tx_desc *tx_desc, size_t words)
 {
 	__le16 chksum = 0;
-	__le16 *data = (__le16 *)(txdesc);
-	struct rtw_tx_desc *tx_desc = (struct rtw_tx_desc *)txdesc;
+	__le16 *data = (__le16 *)(tx_desc);
 
 	le32p_replace_bits(&tx_desc->w7, 0, RTW_TX_DESC_W7_TXDESC_CHECKSUM);
 
@@ -133,7 +138,7 @@ void fill_txdesc_checksum_common(u8 *txdesc, size_t words)
 
 static inline void rtw_tx_fill_txdesc_checksum(struct rtw_dev *rtwdev,
 					       struct rtw_tx_pkt_info *pkt_info,
-					       u8 *txdesc)
+					       struct rtw_tx_desc *txdesc)
 {
 	const struct rtw_chip_info *chip = rtwdev->chip;
 
