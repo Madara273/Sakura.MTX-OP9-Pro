@@ -121,26 +121,13 @@ static void rtw8812a_read_rfe_type(struct rtw_dev *rtwdev,
 	}
 }
 
-static void rtw88xxa_read_usb_type(struct rtw_dev *rtwdev)
+static void rtw8812a_read_usb_type(struct rtw_dev *rtwdev)
 {
 	struct rtw_efuse *efuse = &rtwdev->efuse;
 	struct rtw_hal *hal = &rtwdev->hal;
 	u8 antenna = 0;
 	u8 wmode = 0;
 	u8 val8, i;
-
-	efuse->hw_cap.bw = BIT(RTW_CHANNEL_WIDTH_20) |
-			   BIT(RTW_CHANNEL_WIDTH_40) |
-			   BIT(RTW_CHANNEL_WIDTH_80);
-	efuse->hw_cap.ptcl = EFUSE_HW_CAP_PTCL_VHT;
-
-	if (rtwdev->chip->id == RTW_CHIP_TYPE_8821A)
-		efuse->hw_cap.nss = 1;
-	else
-		efuse->hw_cap.nss = 2;
-
-	if (rtwdev->chip->id == RTW_CHIP_TYPE_8821A)
-		goto print_hw_cap;
 
 	for (i = 0; i < 2; i++) {
 		rtw_read8_physical_efuse(rtwdev, 1019 - i, &val8);
@@ -170,27 +157,35 @@ static void rtw88xxa_read_usb_type(struct rtw_dev *rtwdev)
 		hal->rf_phy_num = 1;
 		hal->antenna_tx = BB_PATH_A;
 		hal->antenna_rx = BB_PATH_A;
-	} else {
-		/* Override rtw_chip_parameter_setup(). It detects 8812au as 1T1R. */
-		efuse->hw_cap.nss = 2;
-		hal->rf_type = RF_2T2R;
-		hal->rf_path_num = 2;
-		hal->rf_phy_num = 2;
-		hal->antenna_tx = BB_PATH_AB;
-		hal->antenna_rx = BB_PATH_AB;
+	} else if (antenna == 2 && wmode == 2) {
+		rtw_info(rtwdev, "This RTL8812AU says it can't do VHT.\n");
 
-		if (antenna == 2 && wmode == 2) {
-			rtw_info(rtwdev, "This RTL8812AU says it can't do VHT.\n");
-
-			/* Can't be EFUSE_HW_CAP_IGNORE and can't be
-			 * EFUSE_HW_CAP_PTCL_VHT, so make it 1.
-			 */
-			efuse->hw_cap.ptcl = 1;
-			efuse->hw_cap.bw &= ~BIT(RTW_CHANNEL_WIDTH_80);
-		}
+		/* Can't be EFUSE_HW_CAP_IGNORE and can't be
+		 * EFUSE_HW_CAP_PTCL_VHT, so make it 1.
+		 */
+		efuse->hw_cap.ptcl = 1;
+		efuse->hw_cap.bw &= ~BIT(RTW_CHANNEL_WIDTH_80);
 	}
+}
 
-print_hw_cap:
+static void rtw88xxa_fill_hw_cap(struct rtw_dev *rtwdev)
+{
+	struct rtw_efuse *efuse = &rtwdev->efuse;
+
+	efuse->hw_cap.bw = BIT(RTW_CHANNEL_WIDTH_20) |
+			   BIT(RTW_CHANNEL_WIDTH_40) |
+			   BIT(RTW_CHANNEL_WIDTH_80);
+	efuse->hw_cap.ptcl = EFUSE_HW_CAP_PTCL_VHT;
+
+	if (rtwdev->chip->id == RTW_CHIP_TYPE_8821A)
+		efuse->hw_cap.nss = 1;
+	else
+		efuse->hw_cap.nss = 2;
+
+	if (rtwdev->chip->id == RTW_CHIP_TYPE_8812A &&
+	    rtwdev->hci.type == RTW_HCI_TYPE_USB)
+		rtw8812a_read_usb_type(rtwdev);
+
 	rtw_dbg(rtwdev, RTW_DBG_EFUSE,
 		"hw cap: hci=0x%02x, bw=0x%02x, ptcl=0x%02x, ant_num=%d, nss=%d\n",
 		efuse->hw_cap.hci, efuse->hw_cap.bw, efuse->hw_cap.ptcl,
@@ -204,8 +199,16 @@ int rtw88xxa_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)
 	struct rtw88xxa_efuse *map;
 	int i;
 
-	if (chip->id == RTW_CHIP_TYPE_8812A)
+	if (chip->id == RTW_CHIP_TYPE_8812A) {
 		rtwdev->hal.cut_version += 1;
+
+		/* Override rtw_chip_parameter_setup(). It detects 8812a as 1T1R. */
+		rtwdev->hal.rf_type = RF_2T2R;
+		rtwdev->hal.rf_path_num = 2;
+		rtwdev->hal.rf_phy_num = 2;
+		rtwdev->hal.antenna_tx = BB_PATH_AB;
+		rtwdev->hal.antenna_rx = BB_PATH_AB;
+	}
 
 	if (rtw_dbg_is_enabled(rtwdev, RTW_DBG_EFUSE))
 		print_hex_dump(KERN_INFO, "", DUMP_PREFIX_OFFSET, 16, 1,
@@ -238,7 +241,7 @@ int rtw88xxa_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)
 	efuse->tx_bb_swing_setting_2g = map->tx_bb_swing_setting_2g;
 	efuse->tx_bb_swing_setting_5g = map->tx_bb_swing_setting_5g;
 
-	rtw88xxa_read_usb_type(rtwdev);
+	rtw88xxa_fill_hw_cap(rtwdev);
 
 	if (chip->id == RTW_CHIP_TYPE_8821A)
 		efuse->btcoex = rtw_read32_mask(rtwdev, REG_WL_BT_PWR_CTRL,
@@ -265,6 +268,8 @@ int rtw88xxa_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)
 			ether_addr_copy(efuse->addr, map->rtw8812au.mac_addr);
 		break;
 	case RTW_HCI_TYPE_PCIE:
+		ether_addr_copy(efuse->addr, map->rtw88xxae.mac_addr);
+		break;
 	case RTW_HCI_TYPE_SDIO:
 	default:
 		/* unsupported now */
@@ -512,7 +517,8 @@ static int rtw88xxau_init_queue_priority(struct rtw_dev *rtwdev)
 static void rtw88xxa_init_wmac_setting(struct rtw_dev *rtwdev)
 {
 	rtw_write16(rtwdev, REG_RXFLTMAP0, 0xffff);
-	rtw_write16(rtwdev, REG_RXFLTMAP1, 0x0400);
+	rtwdev->hal.rxfltmap1 = 0x0400;
+	rtw_write16(rtwdev, REG_RXFLTMAP1, rtwdev->hal.rxfltmap1);
 	rtw_write16(rtwdev, REG_RXFLTMAP2, 0xffff);
 
 	rtw_write32(rtwdev, REG_MAR, 0xffffffff);
@@ -575,7 +581,10 @@ static void rtw88xxa_phy_bb_config(struct rtw_dev *rtwdev)
 
 	/* power on BB/RF domain */
 	val8 = rtw_read8(rtwdev, REG_SYS_FUNC_EN);
-	val8 |= BIT_FEN_USBA;
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
+		val8 |= BIT_FEN_USBA;
+	else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_PCIE)
+		val8 |= BIT_FEN_PCIEA;
 	rtw_write8(rtwdev, REG_SYS_FUNC_EN, val8);
 
 	/* toggle BB reset */
@@ -701,7 +710,6 @@ void rtw88xxa_power_off(struct rtw_dev *rtwdev,
 			const struct rtw_pwr_seq_cmd *const *enter_lps_flow)
 {
 	struct rtw_usb *rtwusb = rtw_get_usb_priv(rtwdev);
-	enum usb_device_speed speed = rtwusb->udev->speed;
 	u16 ori_fsmc0;
 	u8 reg_cr;
 
@@ -717,7 +725,8 @@ void rtw88xxa_power_off(struct rtw_dev *rtwdev,
 		rtw_write16_clr(rtwdev, REG_GPIO_MUXCFG, BIT_EN_SIC);
 
 	/* set Reg 0xf008[3:4] to 2'11 to enable U1/U2 Mode in USB3.0. */
-	if (speed == USB_SPEED_SUPER)
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB &&
+	    rtwusb->udev->speed == USB_SPEED_SUPER)
 		rtw_write8_set(rtwdev, REG_USB_MOD, 0x18);
 
 	rtw_write32(rtwdev, REG_HISR0, 0xffffffff);
@@ -1033,7 +1042,8 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 	 * Reset after MAC power on to prevent RF R/W error.
 	 * Is it a right method?
 	 */
-	if (chip->id == RTW_CHIP_TYPE_8812A) {
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB &&
+	    chip->id == RTW_CHIP_TYPE_8812A) {
 		rtw_write8(rtwdev, REG_RF_CTRL, 5);
 		rtw_write8(rtwdev, REG_RF_CTRL, 7);
 		rtw_write8(rtwdev, REG_RF_B_CTRL, 5);
@@ -1108,7 +1118,8 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 	rtw_write8_set(rtwdev, REG_FWHW_TXQ_CTRL, BIT(7));
 	rtw_write8(rtwdev, REG_ACKTO, 0x80);
 
-	rtw88xxau_tx_aggregation(rtwdev);
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
+		rtw88xxau_tx_aggregation(rtwdev);
 
 	rtw88xxa_init_beacon_parameters(rtwdev);
 	rtw_write8(rtwdev, REG_BCN_MAX_ERR, 0xff);
@@ -1116,7 +1127,8 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 	rtw_hci_interface_cfg(rtwdev);
 
 	/* usb3 rx interval */
-	rtw_write8(rtwdev, REG_USB3_RXITV, 0x01);
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
+		rtw_write8(rtwdev, REG_USB3_RXITV, 0x01);
 
 	/* burst length=4, set 0x3400 for burst length=2 */
 	rtw_write16(rtwdev, REG_RXDMA_STATUS, 0x7400);
@@ -1132,7 +1144,8 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 	rtw_write8(rtwdev, REG_USTIME_TSF, 0x50);
 	rtw_write8(rtwdev, REG_USTIME_EDCA, 0x50);
 
-	if (rtwusb->udev->speed == USB_SPEED_SUPER)
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB &&
+	    rtwusb->udev->speed == USB_SPEED_SUPER)
 		/* Disable U1/U2 Mode to avoid 2.5G spur in USB3.0. */
 		rtw_write8_clr(rtwdev, REG_USB_MOD, BIT(4) | BIT(3));
 
@@ -1188,7 +1201,8 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 	rtw_write32(rtwdev, REG_BAR_MODE_CTRL, 0x0201ffff);
 	rtw_write8(rtwdev, REG_NAV_CTRL + 2, 0);
 
-	rtw_write8_clr(rtwdev, REG_GPIO_MUXCFG, BIT(5));
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
+		rtw_write8_clr(rtwdev, REG_GPIO_MUXCFG, BIT_BT_PTA_EN);
 
 	rtw_phy_init(rtwdev);
 
@@ -1207,11 +1221,13 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 
 	rtw_write16(rtwdev, REG_TX_RPT_TIME, 0x3df0);
 
-	/* Reset USB mode switch setting */
-	rtw_write8(rtwdev, REG_SYS_SDIO_CTRL, 0x0);
-	rtw_write8(rtwdev, REG_ACLK_MON, 0x0);
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB) {
+		/* Reset USB mode switch setting */
+		rtw_write8(rtwdev, REG_SYS_SDIO_CTRL, 0x0);
+		rtw_write8(rtwdev, REG_ACLK_MON, 0x0);
 
-	rtw_write8(rtwdev, REG_USB_HRPWM, 0);
+		rtw_write8(rtwdev, REG_USB_HRPWM, 0);
+	}
 
 	/* ack for xmit mgmt frames. */
 	rtw_write32_set(rtwdev, REG_FWHW_TXQ_CTRL, BIT(12));
