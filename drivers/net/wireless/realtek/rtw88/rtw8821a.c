@@ -733,7 +733,7 @@ static void rtw8821a_led_set(struct led_classdev *led,
 
 static void rtw8821a_fill_txdesc_checksum(struct rtw_dev *rtwdev,
 					  struct rtw_tx_pkt_info *pkt_info,
-					  u8 *txdesc)
+					  struct rtw_tx_desc *txdesc)
 {
 	fill_txdesc_checksum_common(txdesc, 16);
 }
@@ -894,7 +894,7 @@ static const struct rtw_chip_ops rtw8821a_ops = {
 static const struct rtw_page_table page_table_8821a[] = {
 	/* hq_num, nq_num, lq_num, exq_num, gapq_num */
 	{0, 0, 0, 0, 0},	/* SDIO */
-	{0, 0, 0, 0, 0},	/* PCI */
+	{8, 0, 8, 4, 1},	/* PCI */
 	{8, 0, 0, 0, 1},	/* 2 bulk out endpoints */
 	{8, 0, 8, 0, 1},	/* 3 bulk out endpoints */
 	{8, 0, 8, 4, 1},	/* 4 bulk out endpoints */
@@ -937,6 +937,8 @@ static const struct rtw_prioq_addrs prioq_addrs_8821a = {
 	},
 	.wsize = false,
 };
+
+static const struct rtw_intf_phy_para_table phy_para_table_8821a = {};
 
 static const struct rtw_hw_reg rtw8821a_dig[] = {
 	[0] = { .addr = REG_RXIGI_A, .mask = 0x7f },
@@ -998,7 +1000,12 @@ static const struct coex_table_para table_sant_8821a[] = {
 	{0x66556655, 0x66556655},
 	{0x66556aaa, 0x6a5a6aaa}, /* case-30 */
 	{0xffffffff, 0x5aaa5aaa},
-	{0x56555555, 0x5a5a5aaa}
+	{0x56555555, 0x5a5a5aaa},
+	{0xdaffdaff, 0xdaffdaff},
+	{0xddffddff, 0xddffddff},
+	{0xe5555555, 0xe5555555}, /* case-35 */
+	{0xea5a5a5a, 0xea5a5a5a},
+	{0xea6a6a6a, 0xea6a6a6a},
 };
 
 /* Non-Shared-Antenna Coex Table */
@@ -1141,9 +1148,9 @@ const struct rtw_chip_info rtw8821a_hw_spec = {
 	.fw_name = "rtw88/rtw8821a_fw.bin",
 	.wlan_cpu = RTW_WCPU_8051,
 	.tx_pkt_desc_sz = 40,
-	.tx_buf_desc_sz = 16,
+	.tx_buf_desc_sz = 64,
 	.rx_pkt_desc_sz = 24,
-	.rx_buf_desc_sz = 8,
+	.rx_buf_desc_sz = 32,
 	.phy_efuse_size = 512,
 	.log_efuse_size = 512,
 	.ptct_efuse_size = 0,
@@ -1159,14 +1166,14 @@ const struct rtw_chip_info rtw8821a_hw_spec = {
 	.dig_min = 0x20,
 	.ht_supported = true,
 	.vht_supported = true,
-	.lps_deep_mode_supported = 0,
+	.lps_deep_mode_supported = BIT(LPS_DEEP_MODE_LCLK),
 	.sys_func_en = 0xFD,
 	.pwr_on_seq = card_enable_flow_8821a,
 	.pwr_off_seq = card_disable_flow_8821a,
 	.page_table = page_table_8821a,
 	.rqpn_table = rqpn_table_8821a,
 	.prioq_addrs = &prioq_addrs_8821a,
-	.intf_table = NULL,
+	.intf_table = &phy_para_table_8821a,
 	.dig = rtw8821a_dig,
 	.rf_sipi_addr = {REG_LSSI_WRITE_A, REG_LSSI_WRITE_B},
 	.ltecoex_addr = NULL,
