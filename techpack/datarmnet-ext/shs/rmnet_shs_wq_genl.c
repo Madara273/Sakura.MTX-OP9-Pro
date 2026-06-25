@@ -25,9 +25,9 @@ int DATARMNETc252c204a8;
 static struct nla_policy DATARMNET23b45455b1[DATARMNETcecb35ee33 +
 					     (0xd26 + 209 - 0xdf6)] = {
 	[DATARMNET7d289a7bfa] = { .type = NLA_S32 },
-	[DATARMNET813a742587] = { .type = NLA_EXACT_LEN,
+	[DATARMNET813a742587] = { .type = NLA_BINARY,
 				  .len = sizeof(struct DATARMNET6c41b886b2) },
-	[DATARMNET50e1cd26c7] = { .type = NLA_EXACT_LEN,
+	[DATARMNET50e1cd26c7] = { .type = NLA_BINARY,
 				  .len = sizeof(struct DATARMNET837c876a22) },
 	[DATARMNETaa0fe5a855] = { .type = NLA_NUL_STRING,
 				  .len = DATARMNETe429c5f3dd },
