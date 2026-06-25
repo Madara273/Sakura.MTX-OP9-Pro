@@ -1798,7 +1798,6 @@ static void thermal_exit(void)
 	unregister_pm_notifier(&thermal_pm_nb);
 	of_thermal_destroy_zones();
 	destroy_workqueue(thermal_passive_wq);
-	genetlink_exit();
 	class_unregister(&thermal_class);
 	thermal_debug_exit();
 	thermal_unregister_governors();
@@ -1806,19 +1805,6 @@ static void thermal_exit(void)
 	ida_destroy(&thermal_cdev_ida);
 	mutex_destroy(&thermal_list_lock);
 	mutex_destroy(&thermal_governor_lock);
-}
-
-static int __init thermal_netlink_init(void)
-{
-	int ret = 0;
-
-	ret = genetlink_init();
-	if (!ret)
-		goto exit_netlink;
-
-	thermal_exit();
-exit_netlink:
-	return ret;
 }
 
 subsys_initcall(thermal_init);
