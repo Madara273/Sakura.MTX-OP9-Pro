@@ -82,9 +82,9 @@ static int ksu_wrapper_iopoll(struct kiocb *kiocb, bool spin) {
 static int ksu_wrapper_iterate (struct file *fp, struct dir_context *dc) {
 	struct ksu_file_wrapper* data = fp->private_data;
 	struct file* orig = data->orig;
-	return orig->f_op->iterate(orig, dc);
+	return orig->f_op->iterate_shared(orig, dc);
 }
-#endif 
+#endif
 
 // int (*readdir) (struct file *, void *, filldir_t);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0) && !defined(KSU_HAS_ITERATE_DIR)
@@ -354,7 +354,7 @@ static struct ksu_file_wrapper* ksu_create_file_wrapper(struct file* fp) {
 	p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0) && (LINUX_VERSION_CODE > KERNEL_VERSION(3, 11, 0) || defined(KSU_HAS_ITERATE_DIR))
-	p->ops.iterate = fp->f_op->iterate ? ksu_wrapper_iterate : NULL;
+	p->ops.iterate_shared = fp->f_op->iterate_shared ? ksu_wrapper_iterate : NULL;
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0) && !defined(KSU_HAS_ITERATE_DIR)
 	p->ops.readdir = fp->f_op->readdir ? ksu_wrapper_readdir : NULL;
