@@ -443,7 +443,8 @@ ol_tx_ll_fast(ol_txrx_vdev_handle vdev, qdf_nbuf_t msdu_list)
 					qdf_nbuf_inc_users(msdu);
 
 				ol_tx_trace_pkt(msdu, tx_desc->id,
-						vdev->vdev_id);
+						vdev->vdev_id,
+						vdev->qdf_opmode);
 				/*
 				 * If debug display is enabled, show the meta
 				 * data being downloaded to the target via the

@@ -343,7 +343,8 @@ ol_tx_download_done_hl_free(void *txrx_pdev,
 				 QDF_TRACE_DEFAULT_PDEV_ID,
 				 qdf_nbuf_data_addr(msdu),
 				 sizeof(qdf_nbuf_data(msdu)), tx_desc->id,
-				 dp_status));
+				 dp_status,
+				 tx_desc->vdev->qdf_opmode));
 
 	is_frame_freed = ol_tx_download_done_base(pdev, status, msdu, msdu_id);
 

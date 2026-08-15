@@ -1153,7 +1153,8 @@ QDF_STATUS hdd_softap_rx_packet_cbk(void *adapter_context, qdf_nbuf_t rx_buf)
 
 		hdd_event_eapol_log(skb, QDF_RX);
 		qdf_dp_trace_log_pkt(adapter->vdev_id,
-				     skb, QDF_RX, QDF_TRACE_DEFAULT_PDEV_ID);
+				     skb, QDF_TX, QDF_TRACE_DEFAULT_PDEV_ID,
+				     adapter->device_mode);
 		DPTRACE(qdf_dp_trace(skb,
 			QDF_DP_TRACE_RX_HDD_PACKET_PTR_RECORD,
 			QDF_TRACE_DEFAULT_PDEV_ID,
