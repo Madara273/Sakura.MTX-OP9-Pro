@@ -1699,11 +1699,13 @@ static bool qdf_log_icmp_pkt(uint8_t vdev_id, struct sk_buff *skb,
  * @skb: skb pointer
  * @dir: direction
  * @pdev_id: ID of the pdev
+ * @op_mode: Vdev Operation mode
  *
  * Return: true/false
  */
 static bool qdf_log_eapol_pkt(uint8_t vdev_id, struct sk_buff *skb,
-			      enum qdf_proto_dir dir, uint8_t pdev_id)
+			      enum qdf_proto_dir dir, uint8_t pdev_id,
+			      enum QDF_OPMODE op_mode)
 {
 	enum qdf_proto_subtype subtype;
 	uint32_t dp_eap_trace;
@@ -1774,11 +1776,13 @@ static bool qdf_log_eapol_pkt(uint8_t vdev_id, struct sk_buff *skb,
  * @skb: skb pointer
  * @dir: direction
  * @pdev_id: ID of the pdev
+ * @op_mode: Vdev Operation mode
  *
  * Return: true/false
  */
 static bool qdf_log_dhcp_pkt(uint8_t vdev_id, struct sk_buff *skb,
-			     enum qdf_proto_dir dir, uint8_t pdev_id)
+			     enum qdf_proto_dir dir, uint8_t pdev_id,
+			     enum QDF_OPMODE op_mode)
 {
 	enum qdf_proto_subtype subtype = QDF_PROTO_INVALID;
 	uint32_t dp_dhcp_trace;
@@ -1894,15 +1898,16 @@ static bool qdf_log_arp_pkt(uint8_t vdev_id, struct sk_buff *skb,
 
 
 bool qdf_dp_trace_log_pkt(uint8_t vdev_id, struct sk_buff *skb,
-			  enum qdf_proto_dir dir, uint8_t pdev_id)
+			  enum qdf_proto_dir dir, uint8_t pdev_id,
+			  enum QDF_OPMODE op_mode)
 {
 	if (!qdf_dp_get_proto_bitmap() && !qdf_dp_get_proto_event_bitmap())
 		return false;
 	if (qdf_log_arp_pkt(vdev_id, skb, dir, pdev_id))
 		return true;
-	if (qdf_log_dhcp_pkt(vdev_id, skb, dir, pdev_id))
+	if (qdf_log_dhcp_pkt(vdev_id, skb, dir, pdev_id, op_mode))
 		return true;
-	if (qdf_log_eapol_pkt(vdev_id, skb, dir, pdev_id))
+	if (qdf_log_eapol_pkt(vdev_id, skb, dir, pdev_id, op_mode))
 		return true;
 	if (qdf_log_icmp_pkt(vdev_id, skb, dir, pdev_id))
 		return true;

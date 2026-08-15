@@ -90,6 +90,7 @@ QDF_STATUS tgt_vdev_mgr_create_send(
 	vdev_info.vdev_id = vdev_id;
 	vdev_info.op_mode = wlan_util_vdev_get_cdp_txrx_opmode(vdev);
 	vdev_info.subtype = wlan_util_vdev_get_cdp_txrx_subtype(vdev);
+	vdev_info.qdf_opmode = wlan_vdev_mlme_get_opmode(vdev);
 	pdev = wlan_vdev_get_pdev(vdev);
 	soc_txrx_handle = wlan_psoc_get_dp_handle(psoc);
 	if (!soc_txrx_handle)

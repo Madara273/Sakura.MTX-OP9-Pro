@@ -591,12 +591,14 @@ enum wlan_op_subtype {
  * @vdev_id: ID of the vdev
  * @op_mode: Operation mode of the vdev
  * @subtype: subtype of the vdev
+ * @qdf_opmode: Operation mode of the vdev
  */
 struct cdp_vdev_info {
 	uint8_t *vdev_mac_addr;
 	uint8_t vdev_id;
 	enum wlan_op_mode op_mode;
 	enum wlan_op_subtype subtype;
+	enum QDF_OPMODE qdf_opmode;
 };
 
 typedef struct cdp_soc_t *ol_txrx_soc_handle;

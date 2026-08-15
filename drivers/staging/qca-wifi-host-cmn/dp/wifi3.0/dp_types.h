@@ -2556,6 +2556,9 @@ struct dp_peer;
 
 /* VDEV structure for data path state */
 struct dp_vdev {
+	/* QDF VDEV operating mode  */
+	enum QDF_OPMODE qdf_opmode;
+
 	/* OS device abstraction */
 	qdf_device_t osdev;
 
