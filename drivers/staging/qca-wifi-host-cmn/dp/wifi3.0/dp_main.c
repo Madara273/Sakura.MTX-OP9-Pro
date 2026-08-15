@@ -5685,34 +5685,33 @@ static void dp_vdev_pdev_list_remove(struct dp_soc *soc,
 /*
 * dp_vdev_attach_wifi3() - attach txrx vdev
 * @txrx_pdev: Datapath PDEV handle
-* @vdev_mac_addr: MAC address of the virtual interface
-* @vdev_id: VDEV Id
-* @wlan_op_mode: VDEV operating mode
-* @subtype: VDEV operating subtype
+* @pdev_id: PDEV ID for vdev creation
+* @vdev_info: parameters used for vdev creation
 *
 * Return: status
 */
 static QDF_STATUS dp_vdev_attach_wifi3(struct cdp_soc_t *cdp_soc,
 				       uint8_t pdev_id,
-				       uint8_t *vdev_mac_addr,
-				       uint8_t vdev_id,
-				       enum wlan_op_mode op_mode,
-				       enum wlan_op_subtype subtype)
+				       struct cdp_vdev_info *vdev_info)
 {
 	struct dp_soc *soc = (struct dp_soc *)cdp_soc;
 	struct dp_pdev *pdev =
 		dp_get_pdev_from_soc_pdev_id_wifi3((struct dp_soc *)soc,
 						   pdev_id);
-	struct dp_vdev *vdev = qdf_mem_malloc(sizeof(*vdev));
+	struct dp_vdev *vdev;
+	uint8_t *vdev_mac_addr = vdev_info->vdev_mac_addr;
+	uint8_t vdev_id = vdev_info->vdev_id;
+	enum wlan_op_mode op_mode = vdev_info->op_mode;
+	enum wlan_op_subtype subtype = vdev_info->subtype;
 	int i = 0;
 
 	if (!pdev) {
 		QDF_TRACE(QDF_MODULE_ID_DP, QDF_TRACE_LEVEL_ERROR,
 			  FL("DP PDEV is Null for pdev id %d"), pdev_id);
-		qdf_mem_free(vdev);
 		goto fail0;
 	}
 
+	vdev = qdf_mem_malloc(sizeof(*vdev));
 	if (!vdev) {
 		QDF_TRACE(QDF_MODULE_ID_DP, QDF_TRACE_LEVEL_ERROR,
 			FL("DP VDEV memory allocation failed"));
@@ -5753,8 +5752,7 @@ static QDF_STATUS dp_vdev_attach_wifi3(struct cdp_soc_t *cdp_soc,
 #endif
 	vdev->lmac_id = pdev->lmac_id;
 
-	qdf_mem_copy(
-		&vdev->mac_addr.raw[0], vdev_mac_addr, QDF_MAC_ADDR_SIZE);
+	qdf_mem_copy(&vdev->mac_addr.raw[0], vdev_mac_addr, QDF_MAC_ADDR_SIZE);
 
 	/* TODO: Initialize default HTT meta data that will be used in
 	 * TCL descriptors for packets transmitted from this VDEV

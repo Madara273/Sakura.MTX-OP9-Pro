@@ -57,10 +57,8 @@ QDF_STATUS tgt_vdev_mgr_create_send(
 	struct wlan_objmgr_pdev *pdev;
 	struct wlan_objmgr_vdev *vdev;
 	ol_txrx_soc_handle soc_txrx_handle;
-	enum wlan_op_mode cdp_txrx_opmode;
-	enum wlan_op_subtype cdp_txrx_subtype;
 	uint32_t vdev_id;
-	uint8_t *vdev_addr;
+	struct cdp_vdev_info vdev_info = { 0 };
 
 	if (!param) {
 		mlme_err("Invalid input");
@@ -88,9 +86,10 @@ QDF_STATUS tgt_vdev_mgr_create_send(
 		return status;
 	}
 
-	cdp_txrx_opmode = wlan_util_vdev_get_cdp_txrx_opmode(vdev);
-	cdp_txrx_subtype = wlan_util_vdev_get_cdp_txrx_subtype(vdev);
-	vdev_addr = wlan_vdev_mlme_get_macaddr(vdev);
+	vdev_info.vdev_mac_addr = wlan_vdev_mlme_get_macaddr(vdev);
+	vdev_info.vdev_id = vdev_id;
+	vdev_info.op_mode = wlan_util_vdev_get_cdp_txrx_opmode(vdev);
+	vdev_info.subtype = wlan_util_vdev_get_cdp_txrx_subtype(vdev);
 	pdev = wlan_vdev_get_pdev(vdev);
 	soc_txrx_handle = wlan_psoc_get_dp_handle(psoc);
 	if (!soc_txrx_handle)
@@ -98,9 +97,7 @@ QDF_STATUS tgt_vdev_mgr_create_send(
 
 	return cdp_vdev_attach(soc_txrx_handle,
 			       wlan_objmgr_pdev_get_pdev_id(pdev),
-			       vdev_addr, vdev_id,
-			       cdp_txrx_opmode,
-			       cdp_txrx_subtype);
+			       &vdev_info);
 }
 
 QDF_STATUS tgt_vdev_mgr_create_complete(struct vdev_mlme_obj *vdev_mlme)
