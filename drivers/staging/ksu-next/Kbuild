@@ -92,6 +92,14 @@ endif
 $(info -- KernelSU-Next - $(patsubst %-legacy,%,$(KSU_VERSION_TAG)) [$(KSU_VERSION)])
 ccflags-y += -DKSU_VERSION_TAG=\"$(KSU_VERSION_TAG)\"
 
+# SUSFS integration
+ifeq ($(CONFIG_KSU_SUSFS),y)
+SUSFS_VERSION := $(shell sed -n 's/.*SUSFS_VERSION[[:space:]]*"\([^"]*\)".*/\1/p' $(srctree)/include/linux/susfs.h)
+$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
+else
+$(info -- SUSFS: disabled (CONFIG_KSU_SUSFS is not set))
+endif
+
 ifndef KSU_NEXT_MANAGER_SIZE
 KSU_NEXT_MANAGER_SIZE := 0x3e6
 endif
