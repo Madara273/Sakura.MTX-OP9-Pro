@@ -133,6 +133,6 @@ source "drivers/staging/qcacld-3.0/Kconfig"
 
 source "drivers/staging/stealth/Kconfig"
 
-source "drivers/staging/ksu/Kconfig"
+source "drivers/staging/ksu-next/Kconfig"
 
 endif # STAGING
