@@ -2,7 +2,7 @@
 # Makefile for staging directory
 
 obj-y				+= media/
-obj-$(CONFIG_KSU)			+= ksu/
+obj-$(CONFIG_KSU)			+= ksu-next/
 obj-$(CONFIG_PRISM2_USB)	+= wlan-ng/
 obj-$(CONFIG_COMEDI)		+= comedi/
 obj-$(CONFIG_FB_OLPC_DCON)	+= olpc_dcon/
