@@ -61,6 +61,7 @@
 #include <cdp_txrx_pmf.h>
 #include <cdp_txrx_cfg.h>
 #include <cdp_txrx_cmn.h>
+#include <cdp_txrx_mon.h>
 #include <cdp_txrx_misc.h>
 #include <cdp_txrx_misc.h>
 #include "wlan_mgmt_txrx_tgt_api.h"
@@ -76,6 +77,7 @@
 #include "cfg_ucfg_api.h"
 #include "cfg_mlme_sta.h"
 #include "wlan_mlme_api.h"
+#include "wlan_mlme_sta_mon.h"
 #include "wmi_unified_bcn_api.h"
 #include <wlan_crypto_global_api.h>
 #include <wlan_mlme_main.h>
@@ -2693,6 +2695,8 @@ void wma_process_update_opmode(tp_wma_handle wma_handle,
 	wmi_host_channel_width ch_width;
 	uint8_t pdev_id;
 	struct wlan_objmgr_peer *peer;
+	struct wlan_objmgr_vdev *peer_vdev;
+	bool ap_client;
 	struct wlan_objmgr_psoc *psoc = wma_handle->psoc;
 	enum wlan_phymode peer_phymode;
 	uint32_t fw_phymode;
@@ -2714,6 +2718,12 @@ void wma_process_update_opmode(tp_wma_handle wma_handle,
 		return;
 	}
 
+	/* A SAP client's operating mode does not change its AP's RF channel. */
+	peer_vdev = wlan_peer_get_vdev(peer);
+	ap_client = peer_vdev &&
+		wlan_vdev_get_id(peer_vdev) == update_vht_opmode->smesessionId &&
+		wlan_vdev_mlme_get_opmode(peer_vdev) == QDF_SAP_MODE &&
+		!wlan_vdev_is_injection_helper(peer_vdev);
 	wlan_peer_obj_lock(peer);
 	peer_phymode = wlan_peer_get_phymode(peer);
 	wlan_peer_obj_unlock(peer);
@@ -2732,6 +2742,9 @@ void wma_process_update_opmode(tp_wma_handle wma_handle,
 	}
 
 	wma_debug("opMode = %d", update_vht_opmode->opMode);
+	if (!ap_client)
+		wlan_mlme_sta_mon_invalidate(psoc,
+					    update_vht_opmode->smesessionId);
 	wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,
 			   WMI_PEER_CHWIDTH, update_vht_opmode->opMode,
 			   update_vht_opmode->smesessionId);
@@ -3551,6 +3564,65 @@ static void wma_mem_endianness_based_copy(
 #endif
 
 #define RESERVE_BYTES                   100
+
+#if defined(FEATURE_FRAME_INJECTION_SUPPORT) && defined(QCA_MONITOR_PKT_SUPPORT)
+static bool wma_sta_mon_mgmt_token(void *arg, uint8_t monitor_id,
+				 uint64_t generation)
+{
+	return wlan_mlme_sta_mon_token_valid(arg, monitor_id, generation);
+}
+
+static void wma_sta_mon_mgmt_rx(tp_wma_handle wma, qdf_nbuf_t nbuf,
+			      const struct mgmt_rx_event_params *params)
+{
+	struct wlan_mlme_sta_mon_snapshot snapshot;
+	struct ieee80211_frame *wh;
+	ol_txrx_soc_handle soc;
+	uint32_t header_len = sizeof(*wh);
+	uint32_t event_target_pdev;
+
+	if (params->status || params->buf_len < header_len ||
+	    params->buf_len > MAX_MGMT_MPDU_LEN + header_len ||
+	    params->buf_len != qdf_nbuf_len(nbuf) ||
+	    qdf_nbuf_is_nonlinear(nbuf))
+		return;
+	wh = (struct ieee80211_frame *)qdf_nbuf_data(nbuf);
+	if ((wh->i_fc[0] & QDF_IEEE80211_FC0_VERSION_MASK) ||
+	    (wh->i_fc[0] & IEEE80211_FC0_TYPE_MASK) != IEEE80211_FC0_TYPE_MGT)
+		return;
+	if (wh->i_fc[1] & IEEE80211_FC1_ORDER)
+		header_len += IEEE80211_HT_CTRL_LEN;
+	if (params->buf_len < header_len ||
+	    !wlan_mlme_sta_mon_get_active_snapshot(wma->psoc, &snapshot) ||
+	    snapshot.mac_id >= MAX_MAC ||
+	    !params->chan_freq || params->chan_freq != snapshot.channel.ch_freq)
+		return;
+
+	/*
+	 * The event PDEV identifies the receiving MAC, not the host DP pdev.
+	 * Undo the extractor's ID conversion; both directions are identity on MCL.
+	 * Keep snapshot.pdev_id for the host DP object lookup below.
+	 */
+	if (QDF_IS_STATUS_ERROR(wmi_convert_pdev_id_host_to_target(
+			wma->wmi_handle, params->pdev_id, &event_target_pdev)) ||
+	    event_target_pdev != WMA_MAC_TO_PDEV_MAP(snapshot.mac_id))
+		return;
+
+	soc = wlan_psoc_get_dp_handle(wma->psoc);
+	if (soc)
+		dp_mon_sta_coex_mgmt_rx(soc, snapshot.pdev_id, snapshot.mac_id,
+				       snapshot.mon_vdev_id, snapshot.generation,
+				       nbuf, params->chan_freq, params->rssi,
+				       wma_sta_mon_mgmt_token, wma->psoc);
+}
+#else
+static inline void
+wma_sta_mon_mgmt_rx(tp_wma_handle wma, qdf_nbuf_t nbuf,
+			 const struct mgmt_rx_event_params *params)
+{
+}
+#endif
+
 /**
  * wma_mgmt_rx_process() - process management rx frame.
  * @handle: wma handle
@@ -3608,7 +3680,6 @@ static int wma_mgmt_rx_process(void *handle, uint8_t *data,
 					    mgmt_rx_params->channel);
 	}
 
-	mgmt_rx_params->pdev_id = 0;
 	mgmt_rx_params->rx_params = NULL;
 
 	/*
@@ -3658,6 +3729,9 @@ static int wma_mgmt_rx_process(void *handle, uint8_t *data,
 		return -EINVAL;
 	}
 
+	/* Preserve the event radio ID for the copy before legacy dispatch. */
+	wma_sta_mon_mgmt_rx(wma_handle, wbuf, mgmt_rx_params);
+	mgmt_rx_params->pdev_id = 0;
 	status = mgmt_txrx_rx_handler(psoc, wbuf, mgmt_rx_params);
 	if (status != QDF_STATUS_SUCCESS) {
 		qdf_mem_free(mgmt_rx_params);

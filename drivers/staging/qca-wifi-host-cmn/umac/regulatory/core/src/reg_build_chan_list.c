@@ -22,6 +22,7 @@
  * This file defines the API to build master and current channel list.
  */
 
+#include "cdp_txrx_injection.h"
 #include <wlan_cmn.h>
 #include <reg_services_public_struct.h>
 #include <wlan_objmgr_psoc_obj.h>
@@ -1267,6 +1268,8 @@ reg_populate_secondary_cur_chan_list(struct wlan_regulatory_pdev_priv_obj
 void reg_compute_pdev_current_chan_list(struct wlan_regulatory_pdev_priv_obj
 					*pdev_priv_obj)
 {
+	uint64_t ticket = wma_injection_reg_begin(pdev_priv_obj->pdev_ptr);
+
 	reg_copy_6g_cur_mas_chan_list_to_cmn(pdev_priv_obj);
 
 	qdf_mem_copy(pdev_priv_obj->cur_chan_list, pdev_priv_obj->mas_chan_list,
@@ -1310,6 +1313,7 @@ void reg_compute_pdev_current_chan_list(struct wlan_regulatory_pdev_priv_obj
 	reg_populate_secondary_cur_chan_list(pdev_priv_obj);
 
 	reg_modify_chan_list_for_cached_channels(pdev_priv_obj);
+	wma_injection_reg_end(pdev_priv_obj->pdev_ptr, ticket);
 }
 
 void reg_reset_reg_rules(struct reg_rule_info *reg_rules)

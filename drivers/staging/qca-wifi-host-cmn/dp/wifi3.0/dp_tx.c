@@ -27,6 +27,7 @@
 #include "hal_tx.h"
 #include "qdf_mem.h"
 #include "qdf_nbuf.h"
+#include "cdp_txrx_injection.h"
 #include "qdf_net_types.h"
 #include <wlan_cfg.h>
 #include "dp_ipa.h"
@@ -35,6 +36,8 @@
 #endif
 #include "enet.h"
 #include "dp_internal.h"
+#include "dp_rx.h"
+#include "dp_rx_mon.h"
 #ifdef FEATURE_WDS
 #include "dp_txrx_wds.h"
 #endif
@@ -47,16 +50,9 @@
 #endif
 
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
-#define DP_TX_INJECTION_DESC_PREFIX 0xf000
-
-static inline bool dp_tx_is_injection_nbuf(qdf_nbuf_t nbuf)
-{
-	return (QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf) &
-		DP_TX_INJECTION_DESC_PREFIX) == DP_TX_INJECTION_DESC_PREFIX;
-}
-
 extern bool wma_injection_dp_complete(void *wma_context, qdf_nbuf_t nbuf,
 				      int32_t status);
+extern void wma_injection_dp_release(qdf_nbuf_t nbuf, uint8_t slot_index);
 #endif
 
 /* Flag to skip CCE classify when mesh or tid override enabled */
@@ -428,6 +424,13 @@ dp_tx_desc_release(struct dp_tx_desc_s *tx_desc, uint8_t desc_pool_id)
 	struct dp_pdev *pdev = tx_desc->pdev;
 	struct dp_soc *soc;
 	uint8_t comp_status = 0;
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	bool injection_retired = tx_desc->injection_retired;
+	uint8_t injection_slot = injection_retired ? tx_desc->injection_slot : 0;
+	qdf_nbuf_t injection_nbuf = injection_retired ? tx_desc->nbuf : NULL;
+
+	tx_desc->injection_retired = false;
+#endif
 
 	qdf_assert(pdev);
 
@@ -460,6 +463,10 @@ dp_tx_desc_release(struct dp_tx_desc_s *tx_desc, uint8_t desc_pool_id)
 		qdf_atomic_read(&pdev->num_tx_outstanding));
 
 	dp_tx_desc_free(soc, tx_desc, desc_pool_id);
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	if (injection_retired)
+		wma_injection_dp_release(injection_nbuf, injection_slot);
+#endif
 	return;
 }
 
@@ -913,6 +920,9 @@ static void dp_tx_trace_pkt(qdf_nbuf_t skb, uint16_t msdu_id,
 static void dp_tx_trace_pkt(qdf_nbuf_t skb, uint16_t msdu_id,
 			    uint8_t vdev_id)
 {
+	if (cdp_nbuf_is_injection(skb))
+		return;
+
 	QDF_NBUF_CB_TX_PACKET_TRACK(skb) = QDF_NBUF_TX_PKT_DATA_TRACK;
 	QDF_NBUF_CB_TX_DP_TRACE(skb) = 1;
 	DPTRACE(qdf_dp_trace_ptr(skb,
@@ -1637,6 +1647,13 @@ dp_tx_hw_enqueue(struct dp_soc *soc, struct dp_vdev *vdev,
 	struct dp_tx_queue *tx_q = &msdu_info->tx_queue;
 	uint8_t ring_id = tx_q->ring_id & DP_TX_QUEUE_MASK;
 	uint8_t tid = msdu_info->tid;
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	struct cdp_injection_tx_guard injection_guard = {0};
+	bool coex_publish = false;
+#ifdef FEATURE_RUNTIME_PM
+	bool coex_pm_held = false;
+#endif
+#endif
 
 	/*
 	 * Setting it initialization statically here to avoid
@@ -1746,6 +1763,35 @@ dp_tx_hw_enqueue(struct dp_soc *soc, struct dp_vdev *vdev,
 
 	/* Sync cached descriptor with HW */
 
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	if (cdp_nbuf_is_injection(tx_desc->nbuf) && dp_mon_is_sta_coex(soc)) {
+#ifdef FEATURE_RUNTIME_PM
+		/* Token checked frames cannot wait for a later runtime wake. */
+		if (hif_pm_runtime_get(soc->hif_handle,
+				      RTPM_ID_DW_TX_HW_ENQUEUE, true)) {
+			status = QDF_STATUS_E_AGAIN;
+			goto ring_access_fail;
+		}
+		coex_pm_held = true;
+		if (hif_pm_get_link_state(soc->hif_handle) != HIF_PM_LINK_STATE_UP) {
+			status = QDF_STATUS_E_AGAIN;
+			goto ring_access_fail;
+		}
+#endif
+		coex_publish = true;
+	}
+	if (cdp_nbuf_is_injection(tx_desc->nbuf) &&
+	    !wma_injection_tx_begin(tx_desc->nbuf, &injection_guard)) {
+		status = QDF_STATUS_E_AGAIN;
+		goto ring_access_fail;
+	}
+	if (injection_guard.held && !coex_publish) {
+		wma_injection_tx_end(&injection_guard);
+		status = QDF_STATUS_E_AGAIN;
+		goto ring_access_fail;
+	}
+#endif
+
 	hal_tx_desc = hal_srng_src_get_next(soc->hal_soc, hal_ring_hdl);
 	if (qdf_unlikely(!hal_tx_desc)) {
 		dp_verbose_debug("TCL ring full ring_id:%d", ring_id);
@@ -1755,7 +1801,8 @@ dp_tx_hw_enqueue(struct dp_soc *soc, struct dp_vdev *vdev,
 	}
 
 	tx_desc->flags |= DP_TX_DESC_FLAG_QUEUED_TX;
-	dp_vdev_peer_stats_update_protocol_cnt_tx(vdev, tx_desc->nbuf);
+	if (tx_desc->tx_encap_type != htt_cmn_pkt_type_raw)
+		dp_vdev_peer_stats_update_protocol_cnt_tx(vdev, tx_desc->nbuf);
 	hal_tx_desc_sync(hal_tx_desc_cached, hal_tx_desc);
 	coalesce = dp_tx_attempt_coalescing(soc, vdev, tx_desc, tid);
 	DP_STATS_INC_PKT(vdev, tx_i.processed, 1, tx_desc->length);
@@ -1766,7 +1813,19 @@ dp_tx_hw_enqueue(struct dp_soc *soc, struct dp_vdev *vdev,
 				 hal_ring_hdl, soc);
 
 ring_access_fail:
-	dp_tx_ring_access_end_wrapper(soc, hal_ring_hdl, coalesce);
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	if (coex_publish)
+		dp_tx_ring_access_end(soc, hal_ring_hdl, 0);
+	else
+#endif
+		dp_tx_ring_access_end_wrapper(soc, hal_ring_hdl, coalesce);
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	wma_injection_tx_end(&injection_guard);
+#ifdef FEATURE_RUNTIME_PM
+	if (coex_pm_held)
+		hif_pm_runtime_put(soc->hif_handle, RTPM_ID_DW_TX_HW_ENQUEUE);
+#endif
+#endif
 
 	return status;
 }
@@ -1907,6 +1966,10 @@ static void dp_tx_get_tid(struct dp_vdev *vdev, qdf_nbuf_t nbuf,
 	uint16_t   ether_type;
 	qdf_llc_t *llcHdr;
 	struct dp_pdev *pdev = (struct dp_pdev *)vdev->pdev;
+
+	/* HDD parsed the variable raw header, including short controls. */
+	if (cdp_nbuf_is_injection(nbuf))
+		return;
 
 	DP_TX_TID_OVERRIDE(msdu_info, nbuf);
 	if (qdf_likely(vdev->tx_encap_type != htt_cmn_pkt_type_raw)) {
@@ -2285,7 +2348,8 @@ dp_tx_send_msdu_single(struct dp_vdev *vdev, qdf_nbuf_t nbuf,
 		goto fail_return;
 	}
 
-	if (qdf_unlikely(soc->cce_disable)) {
+	if (!cdp_nbuf_is_injection(nbuf) &&
+	    qdf_unlikely(soc->cce_disable)) {
 		if (dp_cce_classify(vdev, nbuf) == true) {
 			DP_STATS_INC(vdev, tx_i.cce_classified, 1);
 			tid = DP_VO_TID;
@@ -2310,7 +2374,7 @@ dp_tx_send_msdu_single(struct dp_vdev *vdev, qdf_nbuf_t nbuf,
 		HTT_TX_TCL_METADATA_VALID_HTT_SET(htt_tcl_metadata, 1);
 
 	dp_tx_desc_update_fast_comp_flag(soc, tx_desc,
-					 !pdev->enhanced_stats_en);
+		!pdev->enhanced_stats_en && !cdp_nbuf_is_injection(nbuf));
 
 	dp_tx_update_mesh_flags(soc, vdev, tx_desc);
 
@@ -2373,11 +2437,6 @@ static inline void dp_tx_comp_free_buf(struct dp_soc *soc,
 	if (desc->flags & DP_TX_DESC_FLAG_TDLS_FRAME)
 		return dp_non_std_tx_comp_free_buff(soc, desc);
 
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	if (dp_tx_is_injection_nbuf(nbuf))
-		wma_injection_dp_complete(NULL, nbuf, 0);
-#endif
-
 	/* 0 : MSDU buffer, 1 : MLE */
 	if (desc->msdu_ext_desc) {
 		/* TSO free */
@@ -2402,6 +2461,13 @@ static inline void dp_tx_comp_free_buf(struct dp_soc *soc,
 	if (desc->flags & DP_TX_DESC_FLAG_MESH_MODE)
 		return dp_mesh_tx_comp_free_buff(soc, desc);
 
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	if (cdp_nbuf_is_injection(nbuf)) {
+		desc->injection_slot = QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf);
+		desc->injection_retired = true;
+		/* Status was recorded before unmap; release follows retirement. */
+	}
+#endif
 	qdf_nbuf_free(nbuf);
 }
 
@@ -2761,6 +2827,61 @@ void dp_tx_add_tx_sniffer_meta_data(struct dp_vdev *vdev,
 	msdu_info->is_tx_sniffer = 1;
 }
 
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+static bool
+dp_tx_add_injection_metadata(qdf_nbuf_t nbuf,
+			     struct dp_tx_msdu_info_s *msdu_info)
+{
+	struct cdp_tx_injection_params params;
+	struct htt_tx_msdu_desc_ext2_t *meta =
+		(struct htt_tx_msdu_desc_ext2_t *)msdu_info->meta_data;
+
+	if (!wma_injection_get_tx_params(nbuf, &params))
+		return false;
+
+	/* Standalone raw data uses the firmware host-data exception pool. */
+	meta->host_tx_desc_pool = params.is_data;
+	meta->valid_encrypt_type = 1;
+	meta->encrypt_type = 0;
+	meta->valid_chanfreq = 1;
+	meta->chanfreq = params.chanfreq;
+	if (params.rate_valid) {
+		meta->valid_mcs_mask = 1;
+		meta->valid_nss_mask = 1;
+		meta->valid_preamble_type = 1;
+		meta->mcs_mask = params.mcs_mask;
+		meta->nss_mask = params.nss_mask;
+		switch (params.preamble) {
+		case CDP_INJECTION_CCK:
+			meta->pream_type = HTT_TX_MSDU_EXT2_DESC_PREAM_CCK;
+			break;
+		case CDP_INJECTION_HT:
+			meta->pream_type = HTT_TX_MSDU_EXT2_DESC_PREAM_HT;
+			break;
+		default:
+			meta->pream_type = HTT_TX_MSDU_EXT2_DESC_PREAM_OFDM;
+			break;
+		}
+	}
+	if (params.bandwidth_valid) {
+		meta->valid_bw_info = 1;
+		meta->dyn_bw = 0;
+		meta->bw_mask = params.bw_mask;
+	}
+	if (params.gi_valid) {
+		meta->valid_guard_interval = 1;
+		meta->guard_interval = params.guard_interval;
+	}
+	if (params.retries_valid) {
+		meta->valid_retries = 1;
+		meta->retry_limit = params.retries;
+	}
+	/* Per-packet requests must not change the helper peer's rate cache. */
+	meta->update_peer_cache = 0;
+	return true;
+}
+#endif
+
 #ifdef MESH_MODE_SUPPORT
 
 /**
@@ -2986,7 +3107,6 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	struct dp_soc *soc = cdp_soc_t_to_dp_soc(soc_hdl);
 	qdf_ether_header_t *eh = NULL;
 	struct dp_tx_msdu_info_s msdu_info;
-	struct dp_tx_seg_info_s raw_seg_info = {0};
 	struct dp_vdev *vdev = dp_vdev_get_ref_by_id(soc, vdev_id,
 						     DP_MOD_ID_TX_EXCEPTION);
 
@@ -3023,16 +3143,19 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	}
 
 	if (qdf_unlikely(tx_exc_metadata->is_raw_injection)) {
-		if (tx_exc_metadata->tx_encap_type != htt_cmn_pkt_type_raw)
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+		if (tx_exc_metadata->tx_encap_type != htt_cmn_pkt_type_raw ||
+		    !cdp_nbuf_is_injection(nbuf) || qdf_nbuf_is_nonlinear(nbuf))
 			goto fail;
 
-		msdu_info.tid = HTT_TX_EXT_TID_DEFAULT;
-		nbuf = dp_tx_prepare_raw(vdev, nbuf, &raw_seg_info,
-					 &msdu_info);
-		if (!nbuf)
+		/* Linear raw frames need standalone HTT options, not Ethernet/SG. */
+		dp_tx_add_tx_sniffer_meta_data(vdev, &msdu_info, 0);
+		if (!dp_tx_add_injection_metadata(nbuf, &msdu_info))
 			goto fail;
-
-		goto send_multiple;
+		goto send_single;
+#else
+		goto fail;
+#endif
 	}
 
 	/*
@@ -3091,6 +3214,9 @@ dp_tx_send_exception(struct cdp_soc_t *soc_hdl, uint8_t vdev_id,
 	 *  With each ring, we also associate a unique Tx descriptor pool
 	 *  to minimize lock contention for these resources.
 	 */
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+send_single:
+#endif
 	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
 
 	/*
@@ -3581,6 +3707,12 @@ void dp_tx_reinject_handler(struct dp_soc *soc,
 
 	qdf_assert(vdev);
 
+	if (cdp_nbuf_is_injection(nbuf)) {
+		dp_tx_comp_free_buf(soc, tx_desc);
+		dp_tx_desc_release(tx_desc, tx_desc->pool_id);
+		return;
+	}
+
 	qdf_mem_zero(&msdu_info, sizeof(msdu_info));
 
 	dp_tx_get_queue(vdev, nbuf, &msdu_info.tx_queue);
@@ -3690,6 +3822,12 @@ static void dp_tx_inspect_handler(struct dp_soc *soc,
 				  struct dp_tx_desc_s *tx_desc,
 				  uint8_t *status)
 {
+
+	if (cdp_nbuf_is_injection(tx_desc->nbuf)) {
+		dp_tx_comp_free_buf(soc, tx_desc);
+		dp_tx_desc_release(tx_desc, tx_desc->pool_id);
+		return;
+	}
 
 	QDF_TRACE(QDF_MODULE_ID_DP, QDF_TRACE_LEVEL_INFO,
 			"%s Tx inspect path",
@@ -4351,6 +4489,13 @@ dp_tx_comp_process_desc(struct dp_soc *soc,
 {
 	uint64_t time_latency = 0;
 
+	/* Private RAW buffers keep the owned unmap/free/descriptor-release path. */
+	if (cdp_nbuf_is_injection(desc->nbuf)) {
+		desc->flags |= DP_TX_DESC_FLAG_COMPLETED_TX;
+		dp_tx_comp_free_buf(soc, desc);
+		return;
+	}
+
 	/*
 	 * m_copy/tx_capture modes are not supported for
 	 * scatter gather packets
@@ -4594,8 +4739,11 @@ void dp_tx_comp_process_tx_status(struct dp_soc *soc,
 	}
 
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	if (dp_tx_is_injection_nbuf(nbuf))
+	if (cdp_nbuf_is_injection(nbuf)) {
 		wma_injection_dp_complete(NULL, nbuf, ts->status);
+		/* Raw 802.11 frames must not enter Ethernet statistics. */
+		goto out;
+	}
 #endif
 
 	eh = (qdf_ether_header_t *)qdf_nbuf_data(nbuf);
@@ -4727,7 +4875,8 @@ dp_tx_comp_process_desc_list(struct dp_soc *soc,
 			peer = dp_peer_get_ref_by_id(soc, peer_id,
 						     DP_MOD_ID_TX_COMP);
 		}
-		if (qdf_likely(desc->flags & DP_TX_DESC_FLAG_SIMPLE)) {
+		if (qdf_likely(desc->flags & DP_TX_DESC_FLAG_SIMPLE) &&
+		    !cdp_nbuf_is_injection(desc->nbuf)) {
 			struct dp_pdev *pdev = desc->pdev;
 
 			if (qdf_likely(peer)) {
@@ -4758,7 +4907,7 @@ dp_tx_comp_process_desc_list(struct dp_soc *soc,
 						    QDF_DMA_TO_DEVICE,
 						    desc->length);
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
-			if (dp_tx_is_injection_nbuf(desc->nbuf))
+			if (cdp_nbuf_is_injection(desc->nbuf))
 				wma_injection_dp_complete(NULL, desc->nbuf, desc->tx_status);
 #endif
 			qdf_nbuf_free(desc->nbuf);
@@ -4837,8 +4986,14 @@ void dp_tx_process_htt_completion(struct dp_tx_desc_s *tx_desc, uint8_t *status,
 	vdev = dp_vdev_get_ref_by_id(soc, tx_desc->vdev_id,
 				     DP_MOD_ID_HTT_COMP);
 
-	if (!vdev)
+	if (!vdev) {
+		/* A detached private helper has no stack owner for its completion. */
+		if (cdp_nbuf_is_injection(tx_desc->nbuf)) {
+			dp_tx_comp_free_buf(soc, tx_desc);
+			dp_tx_desc_release(tx_desc, tx_desc->pool_id);
+		}
 		return;
+	}
 	tx_status = HTT_TX_WBM_COMPLETION_V2_TX_STATUS_GET(htt_desc[0]);
 	htt_handle = (struct htt_soc *)soc->htt_handle;
 	htt_wbm_event_record(htt_handle->htt_logger_handle, tx_status, status);

@@ -34,6 +34,7 @@
 /*----------------------------------------------------------------------------
  * Include Files
  * -------------------------------------------------------------------------*/
+#include "wlan_mlme_sta_mon.h"
 #include "qdf_trace.h"
 #include "qdf_util.h"
 #include "qdf_atomic.h"
@@ -787,6 +788,7 @@ QDF_STATUS wlansap_start_bss(struct sap_context *sap_ctx,
 	sap_ctx->dfs_cac_offload = config->dfs_cac_offload;
 	sap_ctx->isCacEndNotified = false;
 	sap_ctx->is_chan_change_inprogress = false;
+	WRITE_ONCE(sap_ctx->sta_mon_transition, false);
 
 	/* Set the BSSID to your "self MAC Addr" read the mac address
 		from Configuation ITEM received from HDD */
@@ -907,18 +909,23 @@ QDF_STATUS wlansap_stop_bss(struct sap_context *sap_ctx)
 {
 	struct sap_sm_event sap_event;        /* State machine event */
 	QDF_STATUS qdf_status;
+	struct wlan_objmgr_psoc *psoc;
 
 	if (!sap_ctx) {
 		sap_err("Invalid SAP pointer");
 		return QDF_STATUS_E_FAULT;
 	}
 
+	psoc = sap_ctx->vdev ? wlan_vdev_get_psoc(sap_ctx->vdev) : NULL;
+	wlan_mlme_sta_mon_update_begin(psoc);
+	WRITE_ONCE(sap_ctx->sta_mon_transition, true);
 	/* Fill in the event structure for FSM */
 	sap_event.event = eSAP_HDD_STOP_INFRA_BSS;
 	sap_event.params = 0;
 
 	/* Handle event */
 	qdf_status = sap_fsm(sap_ctx, &sap_event);
+	wlan_mlme_sta_mon_update_end(psoc);
 
 	return qdf_status;
 }
@@ -1396,7 +1403,7 @@ wlansap_set_chan_params_for_csa(struct mac_context *mac,
 	return QDF_STATUS_SUCCESS;
 }
 
-QDF_STATUS wlansap_set_channel_change_with_csa(struct sap_context *sap_ctx,
+static QDF_STATUS wlansap_set_channel_change_with_csa_admitted(struct sap_context *sap_ctx,
 					       uint32_t target_chan_freq,
 					       enum phy_ch_width target_bw,
 					       bool strict)
@@ -1574,6 +1581,32 @@ QDF_STATUS wlansap_set_channel_change_with_csa(struct sap_context *sap_ctx,
 	}
 
 	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS wlansap_set_channel_change_with_csa(struct sap_context *sap_ctx,
+					       uint32_t target_chan_freq,
+					       enum phy_ch_width target_bw,
+					       bool strict)
+{
+	struct wlan_objmgr_psoc *psoc;
+	QDF_STATUS status;
+	bool user_request;
+
+	if (!sap_ctx)
+		return QDF_STATUS_E_FAULT;
+	psoc = sap_ctx->vdev ? wlan_vdev_get_psoc(sap_ctx->vdev) : NULL;
+	user_request = sap_ctx->csa_reason == CSA_REASON_USER_INITIATED;
+	if (user_request && !wlan_mlme_sta_mon_admission_begin(psoc))
+		return QDF_STATUS_E_BUSY;
+	/* Lower fallback also covers automatic/deferred CSA without HDD entry. */
+	wlan_mlme_sta_mon_update_begin(psoc);
+	WRITE_ONCE(sap_ctx->sta_mon_transition, true);
+	status = wlansap_set_channel_change_with_csa_admitted(sap_ctx,
+			target_chan_freq, target_bw, strict);
+	wlan_mlme_sta_mon_update_end(psoc);
+	if (user_request)
+		wlan_mlme_sta_mon_admission_end(psoc);
+	return status;
 }
 
 QDF_STATUS wlan_sap_getstation_ie_information(struct sap_context *sap_ctx,
@@ -1809,7 +1842,7 @@ wlansap_set_cac_required_for_chan(struct mac_context *mac_ctx,
 	mlme_set_cac_required(sap_ctx->vdev, cac_required);
 }
 
-QDF_STATUS wlansap_channel_change_request(struct sap_context *sap_ctx,
+static QDF_STATUS wlansap_channel_change_request_admitted(struct sap_context *sap_ctx,
 					  uint32_t target_chan_freq)
 {
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
@@ -1883,6 +1916,23 @@ QDF_STATUS wlansap_channel_change_request(struct sap_context *sap_ctx,
 		  ch_params->sec_ch_offset, ch_params->center_freq_seg0,
 		  ch_params->center_freq_seg1);
 
+	return status;
+}
+
+QDF_STATUS wlansap_channel_change_request(struct sap_context *sap_ctx,
+					  uint32_t target_chan_freq)
+{
+	struct wlan_objmgr_psoc *psoc;
+	QDF_STATUS status;
+
+	if (!sap_ctx)
+		return QDF_STATUS_E_FAULT;
+	psoc = sap_ctx->vdev ? wlan_vdev_get_psoc(sap_ctx->vdev) : NULL;
+	/* Radar may arrive in callback context: invalidate now, never wait. */
+	wlan_mlme_sta_mon_update_begin(psoc);
+	WRITE_ONCE(sap_ctx->sta_mon_transition, true);
+	status = wlansap_channel_change_request_admitted(sap_ctx, target_chan_freq);
+	wlan_mlme_sta_mon_update_end(psoc);
 	return status;
 }
 

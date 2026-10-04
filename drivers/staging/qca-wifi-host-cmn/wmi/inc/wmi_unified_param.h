@@ -4881,6 +4881,7 @@ typedef enum {
 	wmi_vdev_param_rts_threshold = 0,
 	wmi_vdev_param_fragmentation_threshold,
 	wmi_vdev_param_beacon_interval,
+	wmi_vdev_param_nth_beacon_to_host,
 	wmi_vdev_param_listen_interval,
 	wmi_vdev_param_multicast_rate,
 	wmi_vdev_param_mgmt_tx_rate,

@@ -97,6 +97,7 @@ void hdd_monitor_set_rx_monitor_cb(struct ol_txrx_ops *txrx,
 
 int hdd_enable_monitor_mode(struct net_device *dev)
 {
+	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	void *soc = cds_get_context(QDF_MODULE_ID_SOC);
 	uint8_t vdev_id;
 	int ret;
@@ -107,8 +108,9 @@ int hdd_enable_monitor_mode(struct net_device *dev)
 	if (vdev_id == (uint8_t)-EINVAL)
 		return -EINVAL;
 
+	dp_mon_set_sta_coex(soc, adapter->sta_mon_coexist);
 	ret = cdp_set_monitor_mode(soc, vdev_id, false);
-	if (!ret)
+	if (!ret && !adapter->sta_mon_coexist)
 		wma_injection_resume();
 
 	return ret;
@@ -119,10 +121,11 @@ int hdd_disable_monitor_mode(void)
 	void *soc = cds_get_context(QDF_MODULE_ID_SOC);
 	int ret;
 
-	wma_injection_pre_stop_cleanup();
 	ret = cdp_reset_monitor_mode(soc, OL_TXRX_PDEV_ID, false);
 	if (ret)
 		wma_injection_resume();
+	else
+		dp_mon_set_sta_coex(soc, false);
 
 	return ret;
 }

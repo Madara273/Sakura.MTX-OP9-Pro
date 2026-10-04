@@ -1165,6 +1165,7 @@ static QDF_STATUS p2p_roc_req_for_tx_action(
 	roc_ctx->tx_ctx = tx_ctx;
 	roc_ctx->id = tx_ctx->id;
 	tx_ctx->roc_cookie = (uintptr_t)roc_ctx;
+	p2p_sta_mon_roc_begin(roc_ctx);
 
 	p2p_debug("create roc request for off channel tx, tx ctx:%pK, roc ctx:%pK",
 		tx_ctx, roc_ctx);

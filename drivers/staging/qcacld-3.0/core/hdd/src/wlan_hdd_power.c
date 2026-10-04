@@ -1648,6 +1648,9 @@ QDF_STATUS hdd_wlan_shutdown(void)
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	if (!hdd_sta_mon_prepare_stop(hdd_ctx))
+		return QDF_STATUS_E_BUSY;
+
 	hdd_set_connection_in_progress(false);
 	policy_mgr_clear_concurrent_session_count(hdd_ctx->psoc);
 

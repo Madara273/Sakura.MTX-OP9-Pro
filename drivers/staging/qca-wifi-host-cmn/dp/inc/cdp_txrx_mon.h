@@ -26,6 +26,49 @@
 #define _CDP_TXRX_MON_H_
 #include "cdp_txrx_handle.h"
 
+/*
+ * Private, same-module STA/monitor controls. Keep these outside the public
+ * CDP operation tables and configuration union to preserve their ABI.
+ */
+#if defined(FEATURE_FRAME_INJECTION_SUPPORT) && (defined(QCA_MONITOR_PKT_SUPPORT) || defined(FEATURE_MONITOR_MODE_SUPPORT))
+bool dp_mon_sta_coex_supported(struct cdp_soc_t *soc);
+void dp_mon_set_sta_coex(struct cdp_soc_t *soc, bool enabled);
+void dp_mon_sta_coex_pause(struct cdp_soc_t *soc);
+void dp_mon_sta_coex_unpause(struct cdp_soc_t *soc);
+QDF_STATUS dp_mon_sta_coex_rebind(struct cdp_soc_t *soc,
+				 uint8_t monitor_id, uint8_t mac_id,
+				 uint32_t frequency);
+/* The validated WMI management nbuf is borrowed and remains unchanged. */
+void dp_mon_sta_coex_mgmt_rx(struct cdp_soc_t *soc,
+			   uint8_t pdev_id, uint8_t mac_id, uint8_t monitor_id,
+			   uint64_t generation, qdf_nbuf_t nbuf,
+			   uint32_t frequency, int32_t rssi,
+			   bool (*token_valid)(void *arg, uint8_t monitor_id,
+					       uint64_t generation), void *arg);
+#else
+static inline bool dp_mon_sta_coex_supported(struct cdp_soc_t *soc)
+{
+	return false;
+}
+
+static inline void dp_mon_set_sta_coex(struct cdp_soc_t *soc, bool enabled)
+{
+}
+
+static inline void dp_mon_sta_coex_pause(struct cdp_soc_t *soc)
+{
+}
+static inline void dp_mon_sta_coex_unpause(struct cdp_soc_t *soc)
+{
+}
+static inline QDF_STATUS dp_mon_sta_coex_rebind(struct cdp_soc_t *soc,
+				 uint8_t monitor_id, uint8_t mac_id,
+				 uint32_t frequency)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+#endif
+
 static inline QDF_STATUS cdp_reset_monitor_mode(ol_txrx_soc_handle soc,
 						uint8_t pdev_id,
 						u_int8_t smart_monitor)

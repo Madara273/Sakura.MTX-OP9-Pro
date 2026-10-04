@@ -301,6 +301,9 @@ dp_tx_desc_alloc(struct dp_soc *soc, uint8_t desc_pool_id)
 			tx_desc = dp_tx_get_desc_flow_pool(pool);
 			tx_desc->pool_id = desc_pool_id;
 			tx_desc->flags = DP_TX_DESC_FLAG_ALLOCATED;
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+			tx_desc->injection_retired = false;
+#endif
 
 			is_pause = dp_tx_is_threshold_reached(pool,
 							      pool->avail_desc);
@@ -503,6 +506,9 @@ dp_tx_desc_alloc(struct dp_soc *soc, uint8_t desc_pool_id)
 			tx_desc = dp_tx_get_desc_flow_pool(pool);
 			tx_desc->pool_id = desc_pool_id;
 			tx_desc->flags = DP_TX_DESC_FLAG_ALLOCATED;
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+			tx_desc->injection_retired = false;
+#endif
 			if (qdf_unlikely(pool->avail_desc < pool->stop_th)) {
 				pool->status = FLOW_POOL_ACTIVE_PAUSED;
 				qdf_spin_unlock_bh(&pool->flow_pool_lock);
@@ -666,6 +672,10 @@ static inline struct dp_tx_desc_s *dp_tx_desc_alloc(struct dp_soc *soc,
 	pool->num_free--;
 
 	tx_desc->flags = DP_TX_DESC_FLAG_ALLOCATED;
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+
+	tx_desc->injection_retired = false;
+#endif
 
 	TX_DESC_LOCK_UNLOCK(&pool->lock);
 
@@ -710,6 +720,9 @@ static inline struct dp_tx_desc_s *dp_tx_desc_alloc_multiple(
 	c_desc = h_desc;
 	for (count = 0; count < (num_requested - 1); count++) {
 		c_desc->flags = DP_TX_DESC_FLAG_ALLOCATED;
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+		c_desc->injection_retired = false;
+#endif
 		c_desc = c_desc->next;
 	}
 	pool->num_free -= count;

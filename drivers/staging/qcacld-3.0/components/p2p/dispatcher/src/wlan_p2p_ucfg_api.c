@@ -21,6 +21,7 @@
  * DOC: This file contains p2p north bound interface definitions
  */
 
+#include "wlan_mlme_sta_mon.h"
 #include <wmi_unified_api.h>
 #include <wlan_objmgr_psoc_obj.h>
 #include <wlan_objmgr_vdev_obj.h>
@@ -135,14 +136,21 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	if (!wlan_mlme_sta_mon_admission_begin(soc))
+		return QDF_STATUS_E_BUSY;
 	roc_ctx = qdf_mem_malloc(sizeof(*roc_ctx));
-	if (!roc_ctx)
+	if (!roc_ctx) {
+		wlan_mlme_sta_mon_admission_end(soc);
 		return QDF_STATUS_E_NOMEM;
+	}
+	roc_ctx->p2p_soc_obj = p2p_soc_obj;
+	p2p_sta_mon_roc_begin(roc_ctx);
 
 	status = qdf_idr_alloc(&p2p_soc_obj->p2p_idr, roc_ctx, &id);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		qdf_mem_free(roc_ctx);
+		p2p_free_roc_context(roc_ctx);
 		p2p_err("failed to alloc idr, status %d", status);
+		wlan_mlme_sta_mon_admission_end(soc);
 		return status;
 	}
 
@@ -158,17 +166,19 @@ QDF_STATUS ucfg_p2p_roc_req(struct wlan_objmgr_psoc *soc,
 	msg.type = P2P_ROC_REQ;
 	msg.bodyptr = roc_ctx;
 	msg.callback = p2p_process_cmd;
+	msg.flush_callback = p2p_msg_flush_callback;
 	status = scheduler_post_message(QDF_MODULE_ID_HDD,
 					QDF_MODULE_ID_P2P,
 					QDF_MODULE_ID_OS_IF,
 					&msg);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		qdf_mem_free(roc_ctx);
+		p2p_free_roc_context(roc_ctx);
 		qdf_idr_remove(&p2p_soc_obj->p2p_idr, id);
 		p2p_err("post msg fail:%d", status);
 	}
 	p2p_debug("cookie = 0x%llx", *cookie);
 
+	wlan_mlme_sta_mon_admission_end(soc);
 	return status;
 }
 
@@ -316,6 +326,32 @@ QDF_STATUS ucfg_p2p_cleanup_tx_by_psoc(struct wlan_objmgr_psoc *psoc)
 	return p2p_cleanup_tx_sync(obj, NULL);
 }
 
+/* Keep queued management TX from creating a ROC after handoff reservation. */
+static QDF_STATUS p2p_sta_mon_tx_flush(struct scheduler_msg *msg)
+{
+	struct tx_action_context *tx_action = msg->bodyptr;
+
+	wlan_mlme_sta_mon_admission_end(tx_action->p2p_soc_obj->soc);
+	return p2p_msg_flush_callback(msg);
+}
+
+static QDF_STATUS p2p_sta_mon_tx_process(struct scheduler_msg *msg)
+{
+	struct tx_action_context *tx_action = msg->bodyptr;
+	struct wlan_objmgr_psoc *psoc = tx_action->p2p_soc_obj->soc;
+	QDF_STATUS status;
+
+	/* p2p_process_cmd may free the request and its last object reference. */
+	status = wlan_objmgr_psoc_try_get_ref(psoc, WLAN_P2P_ID);
+	if (QDF_IS_STATUS_ERROR(status))
+		return p2p_sta_mon_tx_flush(msg);
+	status = p2p_process_cmd(msg);
+	wlan_mlme_sta_mon_admission_end(psoc);
+	wlan_objmgr_psoc_release_ref(psoc, WLAN_P2P_ID);
+
+	return status;
+}
+
 QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 	struct p2p_mgmt_tx *mgmt_frm, uint64_t *cookie)
 {
@@ -343,9 +379,15 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 		return QDF_STATUS_E_FAILURE;
 	}
 
+	if (!wlan_mlme_sta_mon_mgmt_admission_begin(soc, mgmt_frm->vdev_id,
+						  mgmt_frm->chan_freq,
+						  mgmt_frm->off_chan))
+		return QDF_STATUS_E_BUSY;
 	tx_action = qdf_mem_malloc(sizeof(*tx_action));
-	if (!tx_action)
+	if (!tx_action) {
+		wlan_mlme_sta_mon_admission_end(soc);
 		return QDF_STATUS_E_NOMEM;
+	}
 
 	/* return cookie just for ota ack frames */
 	if (mgmt_frm->dont_wait_for_ack)
@@ -356,6 +398,7 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 		if (QDF_IS_STATUS_ERROR(status)) {
 			qdf_mem_free(tx_action);
 			p2p_err("failed to alloc idr, status :%d", status);
+			wlan_mlme_sta_mon_admission_end(soc);
 			return status;
 		}
 	}
@@ -372,6 +415,7 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 	tx_action->buf = qdf_mem_malloc(tx_action->buf_len);
 	if (!(tx_action->buf)) {
 		qdf_mem_free(tx_action);
+		wlan_mlme_sta_mon_admission_end(soc);
 		return QDF_STATUS_E_NOMEM;
 	}
 	qdf_mem_copy(tx_action->buf, mgmt_frm->buf, tx_action->buf_len);
@@ -382,8 +426,8 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 
 	msg.type = P2P_MGMT_TX;
 	msg.bodyptr = tx_action;
-	msg.callback = p2p_process_cmd;
-	msg.flush_callback = p2p_msg_flush_callback;
+	msg.callback = p2p_sta_mon_tx_process;
+	msg.flush_callback = p2p_sta_mon_tx_flush;
 	status = scheduler_post_message(QDF_MODULE_ID_HDD,
 					QDF_MODULE_ID_P2P,
 					QDF_MODULE_ID_OS_IF,
@@ -394,6 +438,7 @@ QDF_STATUS ucfg_p2p_mgmt_tx(struct wlan_objmgr_psoc *soc,
 		qdf_mem_free(tx_action->buf);
 		qdf_mem_free(tx_action);
 		p2p_err("post msg fail:%d", status);
+		wlan_mlme_sta_mon_admission_end(soc);
 	}
 
 	p2p_debug("cookie = 0x%llx", *cookie);
@@ -514,6 +559,7 @@ QDF_STATUS ucfg_p2p_lo_start(struct wlan_objmgr_psoc *soc,
 	struct p2p_lo_start *p2p_lo_start)
 {
 	struct wlan_lmac_if_p2p_tx_ops *p2p_ops;
+	struct wlan_objmgr_vdev *vdev;
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 
 	p2p_debug("soc:%pK, vdev_id:%d, ctl_flags:%d, freq:%d, period:%d, interval:%d, count:%d, dev_types_len:%d, probe_resp_len:%d, device_types:%pK, probe_resp_tmplt:%pK",
@@ -528,11 +574,26 @@ QDF_STATUS ucfg_p2p_lo_start(struct wlan_objmgr_psoc *soc,
 		return QDF_STATUS_E_INVAL;
 	}
 
+	if (!wlan_mlme_sta_mon_admission_begin(soc))
+		return QDF_STATUS_E_BUSY;
 	p2p_ops = ucfg_p2p_psoc_get_tx_ops(soc);
-	if (p2p_ops->lo_start) {
-		status = p2p_ops->lo_start(soc, p2p_lo_start);
-		p2p_debug("p2p lo start, status:%d", status);
-	}
+	if (!p2p_ops->lo_start)
+		goto out;
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
+			soc, p2p_lo_start->vdev_id, WLAN_P2P_ID);
+	if (!vdev)
+		goto out;
+	status = p2p_sta_mon_lo_begin(vdev);
+	if (QDF_IS_STATUS_ERROR(status))
+		goto put_vdev;
+	status = p2p_ops->lo_start(soc, p2p_lo_start);
+	if (QDF_IS_STATUS_ERROR(status))
+		p2p_sta_mon_lo_end(vdev);
+	p2p_debug("p2p lo start, status:%d", status);
+put_vdev:
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_P2P_ID);
+out:
+	wlan_mlme_sta_mon_admission_end(soc);
 
 	return status;
 }

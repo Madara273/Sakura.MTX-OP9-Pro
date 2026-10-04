@@ -41,6 +41,7 @@
 #endif
 #include "cfg_ucfg_api.h"
 #include "wlan_extscan_api.h"
+#include "wlan_mlme_sta_mon.h"
 
 QDF_STATUS ucfg_scan_register_bcn_cb(struct wlan_objmgr_psoc *psoc,
 	update_beacon_cb cb, enum scan_cb_type type)
@@ -164,6 +165,7 @@ QDF_STATUS ucfg_scan_pno_start(struct wlan_objmgr_vdev *vdev,
 	struct pno_scan_req_params *req)
 {
 	struct scan_vdev_obj *scan_vdev_obj;
+	struct wlan_objmgr_psoc *psoc;
 	QDF_STATUS status;
 
 	scan_vdev_obj = wlan_get_vdev_scan_obj(vdev);
@@ -176,11 +178,16 @@ QDF_STATUS ucfg_scan_pno_start(struct wlan_objmgr_vdev *vdev,
 		return QDF_STATUS_E_ALREADY;
 	}
 
+	psoc = wlan_vdev_get_psoc(vdev);
+	if (!wlan_mlme_sta_mon_admission_begin(psoc))
+		return QDF_STATUS_E_BUSY;
 	status = tgt_scan_pno_start(vdev, req);
 	if (QDF_IS_STATUS_ERROR(status))
 		scm_err("pno start failed");
-	else
-		scan_vdev_obj->pno_in_progress = true;
+	else {
+		smp_store_release(&scan_vdev_obj->pno_in_progress, true);
+	}
+	wlan_mlme_sta_mon_admission_end(psoc);
 
 	return status;
 }
@@ -223,9 +230,27 @@ QDF_STATUS ucfg_scan_pno_stop(struct wlan_objmgr_vdev *vdev)
 	if (QDF_IS_STATUS_ERROR(status))
 		scm_err("pno stop failed");
 	else
-		scan_vdev_obj->pno_in_progress = false;
+		smp_store_release(&scan_vdev_obj->pno_in_progress, false);
 
 	return status;
+}
+
+void ucfg_scan_set_pno_reqid(struct wlan_objmgr_vdev *vdev, uint64_t reqid)
+{
+	struct scan_vdev_obj *obj = wlan_get_vdev_scan_obj(vdev);
+
+	if (obj && !smp_load_acquire(&obj->pno_in_progress))
+		WRITE_ONCE(obj->pno_reqid, reqid);
+}
+
+bool ucfg_scan_get_pno_reqid(struct wlan_objmgr_vdev *vdev, uint64_t *reqid)
+{
+	struct scan_vdev_obj *obj = wlan_get_vdev_scan_obj(vdev);
+
+	if (!obj || !reqid || !smp_load_acquire(&obj->pno_in_progress))
+		return false;
+	*reqid = READ_ONCE(obj->pno_reqid);
+	return true;
 }
 
 bool ucfg_scan_get_pno_in_progress(struct wlan_objmgr_vdev *vdev)

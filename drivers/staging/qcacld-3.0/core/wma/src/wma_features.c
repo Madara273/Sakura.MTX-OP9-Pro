@@ -26,6 +26,7 @@
 /* Header files */
 
 #include "cds_ieee80211_common.h"	/* ieee80211_frame */
+#include "wlan_mlme_sta_mon.h"
 #include "wma.h"
 #include "wma_api.h"
 #include "cds_api.h"
@@ -71,6 +72,267 @@
 #include "wlan_scan_api.h"
 #include <wlan_crypto_global_api.h>
 #include "cdp_txrx_host_stats.h"
+#include <linux/mutex.h>
+
+/* Beacon reporting belongs to its ordinary caller. Monitor capture only borrows
+ * the firmware upload period, without changing SME flags or report callbacks.
+ * WMA holds each vdev reference until the detach hook clears this sidecar.
+ * All NTH writers and lifecycle hooks run in process/scheduler context.
+ */
+struct wma_sta_mon_beacon_entry {
+	struct wlan_objmgr_vdev *vdev;
+	struct wlan_objmgr_vdev *monitor;
+	uint64_t generation;
+	uint32_t requested;
+	uint8_t monitor_id;
+	bool is_sta;
+	bool restore_pending;
+};
+
+static DEFINE_MUTEX(wma_sta_mon_beacon_lock);
+static tp_wma_handle wma_sta_mon_beacon_wma;
+static struct wma_sta_mon_beacon_entry
+	wma_sta_mon_beacons[WLAN_UMAC_PSOC_MAX_VDEVS];
+/* The CLI queue's spare VDEV parameter carries this lifetime stamp. */
+static uint32_t wma_sta_mon_beacon_cookies[WLAN_UMAC_PSOC_MAX_VDEVS];
+static uint32_t wma_sta_mon_beacon_serial;
+
+uint32_t wma_sta_mon_beacon_cookie(uint32_t id)
+{
+	return id < WLAN_UMAC_PSOC_MAX_VDEVS ?
+		READ_ONCE(wma_sta_mon_beacon_cookies[id]) : 0;
+}
+
+static struct wma_sta_mon_beacon_entry *
+wma_sta_mon_beacon_entry(uint32_t id)
+{
+	tp_wma_handle wma = wma_sta_mon_beacon_wma;
+	struct wma_sta_mon_beacon_entry *entry;
+
+	if (!wma || id >= WLAN_UMAC_PSOC_MAX_VDEVS ||
+	    id >= wma->max_bssid || !wma->interfaces ||
+	    !wma->interfaces[id].vdev_active)
+		return NULL;
+	entry = &wma_sta_mon_beacons[id];
+	if (!entry->vdev || entry->vdev != wma->interfaces[id].vdev)
+		return NULL;
+	return entry;
+}
+
+static QDF_STATUS wma_sta_mon_beacon_send(uint32_t id, uint32_t value)
+{
+	struct vdev_set_params param = {
+		.vdev_id = id,
+		.param_id = wmi_vdev_param_nth_beacon_to_host,
+		.param_value = value,
+	};
+
+	/* A successful send is transport submission, not a firmware response. */
+	return wmi_unified_vdev_set_param_send(
+			wma_sta_mon_beacon_wma->wmi_handle, &param);
+}
+
+static uint32_t wma_sta_mon_beacon_value(uint32_t requested)
+{
+	/* Preserve an ordinary reporter's WoW policy. Otherwise do not introduce
+	 * wakeups for monitor capture; HDD holds its existing monitor wakelock.
+	 */
+	return (requested & ~BIT(31)) ? (requested & BIT(31)) | 1 : BIT(31) | 1;
+}
+
+void wma_sta_mon_beacon_init(WMA_HANDLE handle)
+{
+	unsigned int i;
+
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	for (i = 0; i < WLAN_UMAC_PSOC_MAX_VDEVS; i++)
+		WRITE_ONCE(wma_sta_mon_beacon_cookies[i], 0);
+	qdf_mem_zero(wma_sta_mon_beacons, sizeof(wma_sta_mon_beacons));
+	wma_sta_mon_beacon_wma = handle;
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+}
+
+void wma_sta_mon_beacon_deinit(WMA_HANDLE handle)
+{
+	unsigned int i;
+
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	if (wma_sta_mon_beacon_wma == handle) {
+		for (i = 0; i < WLAN_UMAC_PSOC_MAX_VDEVS; i++) {
+			WRITE_ONCE(wma_sta_mon_beacon_cookies[i], 0);
+			if (wma_sta_mon_beacons[i].restore_pending)
+				wma_warn("WMI reset ends pending beacon lease on vdev %u", i);
+		}
+		/* The endpoint is being destroyed. Never restore into its successor. */
+		wma_sta_mon_beacon_wma = NULL;
+		qdf_mem_zero(wma_sta_mon_beacons, sizeof(wma_sta_mon_beacons));
+	}
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+}
+
+void wma_sta_mon_beacon_vdev_attach(struct wlan_objmgr_vdev *vdev)
+{
+	uint8_t id = wlan_vdev_get_id(vdev);
+	struct wma_sta_mon_beacon_entry *entry;
+	tp_wma_handle wma;
+
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	wma = wma_sta_mon_beacon_wma;
+	if (wma && wma->psoc == wlan_vdev_get_psoc(vdev) &&
+	    id < WLAN_UMAC_PSOC_MAX_VDEVS && id < wma->max_bssid &&
+	    wma->interfaces[id].vdev == vdev) {
+		entry = &wma_sta_mon_beacons[id];
+		qdf_mem_zero(entry, sizeof(*entry));
+		entry->vdev = vdev;
+		entry->is_sta = wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE;
+		/* A new firmware vdev has no ordinary beacon-report request yet. */
+		if (!++wma_sta_mon_beacon_serial)
+			++wma_sta_mon_beacon_serial;
+		WRITE_ONCE(wma_sta_mon_beacon_cookies[id],
+			   wma_sta_mon_beacon_serial);
+	}
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+}
+
+void wma_sta_mon_beacon_vdev_detach(struct wlan_objmgr_vdev *vdev)
+{
+	struct wma_sta_mon_beacon_entry *entry;
+	unsigned int i;
+	QDF_STATUS status;
+
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	for (i = 0; i < WLAN_UMAC_PSOC_MAX_VDEVS; i++) {
+		entry = &wma_sta_mon_beacons[i];
+		if (entry->vdev == vdev) {
+			/* This firmware lifetime is ending; do not touch a reused ID. */
+			WRITE_ONCE(wma_sta_mon_beacon_cookies[i], 0);
+			qdf_mem_zero(entry, sizeof(*entry));
+		} else if (entry->monitor == vdev) {
+			/* Normal HDD stop restores before deletion. Retain an orphaned
+			 * restore request if an exceptional teardown bypassed that stop.
+			 */
+			status = wma_sta_mon_beacon_entry(i) ?
+				wma_sta_mon_beacon_send(i, entry->requested) :
+				QDF_STATUS_E_INVAL;
+			entry->monitor = NULL;
+			entry->restore_pending = QDF_IS_STATUS_ERROR(status);
+			if (entry->restore_pending)
+				wma_err("Beacon restore failed at monitor deletion: sta %u status %d", i, status);
+		}
+	}
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+}
+
+QDF_STATUS wma_sta_mon_beacon_set_param(WMA_HANDLE wmi_handle,
+				      uint32_t id, uint32_t value,
+				      uint32_t cookie)
+{
+	struct wma_sta_mon_beacon_entry *entry;
+	QDF_STATUS status = QDF_STATUS_E_INVAL;
+
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	entry = wma_sta_mon_beacon_entry(id);
+	if (!entry || !cookie || wma_sta_mon_beacon_cookie(id) != cookie ||
+	    wma_sta_mon_beacon_wma->wmi_handle != wmi_handle)
+		goto out;
+	entry->requested = value;
+	status = wma_sta_mon_beacon_send(id, entry->monitor ?
+				wma_sta_mon_beacon_value(value) : value);
+	if (!entry->monitor)
+		entry->restore_pending = QDF_IS_STATUS_ERROR(status);
+out:
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+	return status;
+}
+
+QDF_STATUS wma_sta_mon_beacon_acquire(struct wlan_objmgr_psoc *psoc,
+				    uint8_t sta_id, uint8_t monitor_id,
+				    uint64_t generation)
+{
+	struct wlan_objmgr_vdev *sta, *monitor;
+	struct wma_sta_mon_beacon_entry *entry, *mon_entry;
+	QDF_STATUS status = QDF_STATUS_E_AGAIN;
+
+	sta = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, sta_id, WLAN_LEGACY_WMA_ID);
+	if (!sta)
+		return status;
+	monitor = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, monitor_id,
+						    WLAN_LEGACY_WMA_ID);
+	if (!monitor)
+		goto put_sta;
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	entry = wma_sta_mon_beacon_entry(sta_id);
+	mon_entry = wma_sta_mon_beacon_entry(monitor_id);
+	if (!entry || !mon_entry || entry->vdev != sta ||
+	    mon_entry->vdev != monitor || !entry->is_sta ||
+	    wma_sta_mon_beacon_wma->psoc != psoc ||
+	    wlan_vdev_mlme_get_opmode(monitor) != QDF_MONITOR_MODE ||
+	    QDF_IS_STATUS_ERROR(wlan_vdev_mlme_is_active(sta)) ||
+	    !wlan_mlme_sta_mon_start_valid(psoc, generation))
+		goto unlock;
+	if (entry->monitor && (entry->monitor != monitor ||
+			       entry->generation != generation)) {
+		status = QDF_STATUS_E_BUSY;
+		goto unlock;
+	}
+	if (!entry->monitor && entry->restore_pending) {
+		status = wma_sta_mon_beacon_send(sta_id, entry->requested);
+		if (QDF_IS_STATUS_ERROR(status))
+			goto unlock;
+	}
+	/* Keep ownership even on failure: open rollback must restore the latest
+	 * ordinary request before the monitor vdev can be released.
+	 */
+	entry->monitor = monitor;
+	entry->monitor_id = monitor_id;
+	entry->generation = generation;
+	entry->restore_pending = true;
+	status = wma_sta_mon_beacon_send(sta_id,
+				wma_sta_mon_beacon_value(entry->requested));
+	if (QDF_IS_STATUS_SUCCESS(status) &&
+	    !wlan_mlme_sta_mon_start_valid(psoc, generation))
+		status = QDF_STATUS_E_AGAIN;
+unlock:
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+	wlan_objmgr_vdev_release_ref(monitor, WLAN_LEGACY_WMA_ID);
+put_sta:
+	wlan_objmgr_vdev_release_ref(sta, WLAN_LEGACY_WMA_ID);
+	return status;
+}
+
+QDF_STATUS wma_sta_mon_beacon_release(struct wlan_objmgr_psoc *psoc,
+				    uint8_t monitor_id)
+{
+	struct wma_sta_mon_beacon_entry *entry, *mon_entry;
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
+	unsigned int i;
+
+	mutex_lock(&wma_sta_mon_beacon_lock);
+	if (!wma_sta_mon_beacon_wma || wma_sta_mon_beacon_wma->psoc != psoc)
+		goto out;
+	for (i = 0; i < WLAN_UMAC_PSOC_MAX_VDEVS; i++) {
+		entry = &wma_sta_mon_beacons[i];
+		if (!entry->monitor || entry->monitor_id != monitor_id)
+			continue;
+		mon_entry = wma_sta_mon_beacon_entry(monitor_id);
+		if (!mon_entry || mon_entry->vdev != entry->monitor ||
+		    !wma_sta_mon_beacon_entry(i)) {
+			status = QDF_STATUS_E_INVAL;
+			break;
+		}
+		status = wma_sta_mon_beacon_send(i, entry->requested);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			wma_err("Beacon restore failed: sta %u monitor %u status %d", i, monitor_id, status);
+			break;
+		}
+		entry->monitor = NULL;
+		entry->restore_pending = false;
+	}
+out:
+	mutex_unlock(&wma_sta_mon_beacon_lock);
+	return status;
+}
+
 
 /**
  * WMA_SET_VDEV_IE_SOURCE_HOST - Flag to identify the source of VDEV SET IE
@@ -1178,6 +1440,8 @@ int wma_csa_offload_handler(void *handle, uint8_t *event, uint32_t len)
 		return -EINVAL;
 	}
 
+	wlan_mlme_sta_mon_invalidate(wma->psoc, WLAN_INVALID_VDEV_ID);
+	wlan_mlme_sta_mon_invalidate(wma->psoc, WLAN_INVALID_VDEV_ID);
 	csa_offload_event = qdf_mem_malloc(sizeof(*csa_offload_event));
 	if (!csa_offload_event)
 		return -EINVAL;

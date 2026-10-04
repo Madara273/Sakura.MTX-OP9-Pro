@@ -4576,8 +4576,11 @@ QDF_STATUS wma_mon_mlme_vdev_stop_send(struct vdev_mlme_obj *vdev_mlme,
 
 	status = wma_send_vdev_stop_to_fw(wma, vdev_id);
 
-	if (QDF_IS_STATUS_ERROR(status))
+	if (QDF_IS_STATUS_ERROR(status)) {
+		wlan_mlme_sta_mon_fw_timeout(wlan_vdev_get_psoc(vdev_mlme->vdev),
+					     vdev_id);
 		wma_err("Failed to send vdev stop cmd: vdev %d", vdev_id);
+	}
 
 	wlan_vdev_mlme_sm_deliver_evt(vdev_mlme->vdev,
 				      WLAN_VDEV_SM_EV_MLME_DOWN_REQ,
@@ -4602,8 +4605,11 @@ QDF_STATUS wma_mon_mlme_vdev_down_send(struct vdev_mlme_obj *vdev_mlme,
 
 	status = wma_send_vdev_down_to_fw(wma, vdev_id);
 
-	if (QDF_IS_STATUS_ERROR(status))
+	if (QDF_IS_STATUS_ERROR(status)) {
+		wlan_mlme_sta_mon_fw_timeout(wlan_vdev_get_psoc(vdev_mlme->vdev),
+					     vdev_id);
 		wma_err("Failed to send vdev down cmd: vdev %d", vdev_id);
+	}
 
 	wlan_vdev_mlme_sm_deliver_evt(vdev_mlme->vdev,
 				      WLAN_VDEV_SM_EV_DOWN_COMPLETE,
