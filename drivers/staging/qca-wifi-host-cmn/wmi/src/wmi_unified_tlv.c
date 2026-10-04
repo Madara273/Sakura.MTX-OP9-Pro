@@ -355,6 +355,7 @@ static const uint32_t vdev_param_tlv[] = {
 	[wmi_vdev_param_fragmentation_threshold] =
 			WMI_VDEV_PARAM_FRAGMENTATION_THRESHOLD,
 	[wmi_vdev_param_beacon_interval] = WMI_VDEV_PARAM_BEACON_INTERVAL,
+	[wmi_vdev_param_nth_beacon_to_host] = WMI_VDEV_PARAM_NTH_BEACON_TO_HOST,
 	[wmi_vdev_param_listen_interval] = WMI_VDEV_PARAM_LISTEN_INTERVAL,
 	[wmi_vdev_param_multicast_rate] = WMI_VDEV_PARAM_MULTICAST_RATE,
 	[wmi_vdev_param_mgmt_tx_rate] = WMI_VDEV_PARAM_MGMT_TX_RATE,
