@@ -28,6 +28,7 @@
  */
 
 #include "sch_api.h"
+#include "wlan_mlme_sta_mon.h"
 #include "lim_utils.h"
 #include "lim_types.h"
 #include "lim_security_utils.h"
@@ -4348,11 +4349,14 @@ lim_prepare_for11h_channel_switch(struct mac_context *mac, struct pe_session *pe
 	if (!LIM_IS_STA_ROLE(pe_session))
 		return;
 
-	/* Flag to indicate 11h channel switch in progress */
-	pe_session->gLimSpecMgmt.dot11hChanSwState = eLIM_11H_CHANSW_RUNNING;
+	/* Publish pending CSA before policy work can outlive this call. */
+	wlan_mlme_sta_mon_update_begin(mac->psoc);
+	WRITE_ONCE(pe_session->gLimSpecMgmt.dot11hChanSwState,
+		   eLIM_11H_CHANSW_RUNNING);
 
 	/** We are safe to switch channel at this point */
 	lim_stop_tx_and_switch_channel(mac, pe_session->peSessionId);
+	wlan_mlme_sta_mon_update_end(mac->psoc);
 }
 
 tSirNwType lim_get_nw_type(struct mac_context *mac, uint32_t chan_freq, uint32_t type,

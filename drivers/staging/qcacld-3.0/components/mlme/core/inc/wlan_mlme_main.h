@@ -30,6 +30,7 @@
 #include <wlan_objmgr_vdev_obj.h>
 #include <wlan_objmgr_peer_obj.h>
 #include "wlan_cm_roam_public_struct.h"
+#include "wlan_mlme_sta_mon.h"
 #include "wlan_wfa_config_public_struct.h"
 
 #define mlme_legacy_fatal(params...) QDF_TRACE_FATAL(QDF_MODULE_ID_MLME, params)
@@ -45,10 +46,27 @@
  * @rso_tx_ops: Roam Tx ops to send roam offload commands to firmware
  * @wfa_testcmd: WFA config tx ops to send to FW
  */
+struct wlan_mlme_sta_mon_control {
+	struct wlan_mlme_sta_mon_snapshot snapshot;
+	enum wlan_mlme_sta_mon_state state;
+	wlan_mlme_sta_mon_stop_cb stop;
+	void *arg;
+	uint32_t updates;
+	uint32_t admissions;
+	uint64_t handoff_generation;
+	enum wlan_mlme_sta_mon_handoff_phase handoff_phase;
+	uint8_t handoff_sta_vdev_id;
+	bool handoff_disconnect_seen;
+	bool exclusive_lease;
+	bool attached;
+	bool fw_uncertain;
+};
+
 struct wlan_mlme_psoc_ext_obj {
 	struct wlan_mlme_cfg cfg;
 	struct wlan_cm_roam_tx_ops rso_tx_ops;
 	struct wlan_mlme_wfa_cmd wfa_testcmd;
+	struct wlan_mlme_sta_mon_control sta_mon;
 };
 
 /**

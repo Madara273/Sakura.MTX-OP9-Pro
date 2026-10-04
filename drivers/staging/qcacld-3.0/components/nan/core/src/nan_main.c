@@ -21,6 +21,7 @@
  * DOC: contains core nan function definitions
  */
 
+#include "wlan_mlme_sta_mon.h"
 #include "wlan_utility.h"
 #include "nan_ucfg_api.h"
 #include "wlan_nan_api.h"
@@ -1191,6 +1192,9 @@ QDF_STATUS nan_discovery_pre_enable(struct wlan_objmgr_psoc *psoc,
 {
 	QDF_STATUS status = QDF_STATUS_E_INVAL;
 
+	if (!wlan_mlme_sta_mon_admission_begin(psoc))
+		return QDF_STATUS_E_BUSY;
+	wlan_mlme_sta_mon_update_begin(psoc);
 	status = nan_set_discovery_state(psoc, NAN_DISC_ENABLE_IN_PROGRESS);
 
 	if (QDF_IS_STATUS_ERROR(status)) {
@@ -1221,6 +1225,8 @@ QDF_STATUS nan_discovery_pre_enable(struct wlan_objmgr_psoc *psoc,
 pre_enable_failure:
 	if (QDF_IS_STATUS_ERROR(status))
 		nan_set_discovery_state(psoc, NAN_DISC_DISABLED);
+	wlan_mlme_sta_mon_update_end(psoc);
+	wlan_mlme_sta_mon_admission_end(psoc);
 
 	return status;
 }
