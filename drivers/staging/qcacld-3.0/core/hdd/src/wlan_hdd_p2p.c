@@ -726,9 +726,6 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 	if (ret)
 		return ERR_PTR(ret);
 
-	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc))
-		return ERR_PTR(-EINVAL);
-
 	if (wlan_hdd_is_mon_concurrency())
 		return ERR_PTR(-EINVAL);
 
@@ -1123,6 +1120,13 @@ int wlan_hdd_del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 	osif_vdev_sync_destroy(vdev_sync);
 
 	if (!errno && restore_station) {
+		struct hdd_adapter *sta_adapter =
+			hdd_get_adapter(hdd_ctx, QDF_STA_MODE);
+		if (sta_adapter) {
+			strscpy(hdd_ctx->monitor_restore_iface,
+				sta_adapter->dev->name, IFNAMSIZ);
+			hdd_ctx->monitor_restore_pending = true;
+		}
 		hdd_queue_monitor_station_restore(hdd_ctx);
 	}
 	return errno;
