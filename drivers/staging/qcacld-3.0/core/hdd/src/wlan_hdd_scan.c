@@ -48,6 +48,7 @@
 #include "wlan_utility.h"
 #include "wlan_hdd_object_manager.h"
 #include "nan_ucfg_api.h"
+#include "wlan_mlme_sta_mon.h"
 
 #define SCAN_DONE_EVENT_BUF_SIZE 4096
 #define RATE_MASK 0x7f
@@ -720,13 +721,21 @@ int wlan_hdd_cfg80211_scan(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
+	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(request->wdev->netdev, &vdev_sync);
 	if (errno)
 		return errno;
 
+	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
+		errno = -EBUSY;
+		goto sta_mon_out;
+	}
+
 	errno = __wlan_hdd_cfg80211_scan(wiphy, request, NL_SCAN);
 
+	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
+sta_mon_out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -1201,13 +1210,20 @@ int wlan_hdd_cfg80211_vendor_scan(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
+	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
 	if (errno)
 		return errno;
 
+	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
+		errno = -EBUSY;
+		goto out;
+	}
 	errno = __wlan_hdd_cfg80211_vendor_scan(wiphy, wdev, data, data_len);
+	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
 
+out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -1293,6 +1309,202 @@ int wlan_hdd_scan_abort(struct hdd_adapter *adapter)
 }
 
 #ifdef FEATURE_WLAN_SCAN_PNO
+static void hdd_sta_mon_pno_queue(struct hdd_context *hdd_ctx, uint32_t delay)
+{
+	if (!READ_ONCE(hdd_ctx->sta_mon_pno_initialized))
+		return;
+	mutex_lock(&hdd_ctx->sta_mon_pno_lock);
+	if (hdd_ctx->sta_mon_pno_initialized)
+		qdf_delayed_work_start(&hdd_ctx->sta_mon_pno_work, delay);
+	mutex_unlock(&hdd_ctx->sta_mon_pno_lock);
+}
+
+void hdd_sta_mon_pno_resume(struct hdd_context *hdd_ctx)
+{
+	hdd_sta_mon_pno_queue(hdd_ctx, 0);
+}
+
+bool hdd_sta_mon_pno_cancel(struct net_device *dev)
+{
+	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	struct pno_scan_req_params *req = NULL;
+	struct net_device *held = NULL;
+
+	if (!hdd_ctx || !READ_ONCE(hdd_ctx->sta_mon_pno_initialized))
+		return false;
+	/* Also fences a worker's real WMI submit before the caller sends STOP. */
+	mutex_lock(&hdd_ctx->sta_mon_pno_lock);
+	if (hdd_ctx->sta_mon_pno_dev == dev) {
+		req = hdd_ctx->sta_mon_pno_req;
+		held = hdd_ctx->sta_mon_pno_dev;
+		hdd_ctx->sta_mon_pno_req = NULL;
+		hdd_ctx->sta_mon_pno_dev = NULL;
+	}
+	mutex_unlock(&hdd_ctx->sta_mon_pno_lock);
+	qdf_mem_free(req);
+	if (held)
+		dev_put(held);
+	return held != NULL;
+}
+
+static void hdd_sta_mon_pno_work(void *arg)
+{
+	struct hdd_context *hdd_ctx = arg;
+	struct pno_scan_req_params *req, *released_req = NULL;
+	struct net_device *dev, *released_dev = NULL;
+	struct hdd_adapter *adapter;
+	struct wlan_objmgr_vdev *vdev = NULL;
+	struct osif_vdev_sync *vdev_sync = NULL;
+	uint64_t reqid = 0;
+	bool retry = false, failed = false;
+	int ret;
+
+	if (!READ_ONCE(hdd_ctx->sta_mon_pno_initialized))
+		return;
+	/* Never wait for wiphy or RTNL from a cancellable driver worker. The
+	 * mutex also orders us after cfg80211 publishes START and before STOP.
+	 */
+	if (!rtnl_trylock()) {
+		hdd_sta_mon_pno_queue(hdd_ctx, 100);
+		return;
+	}
+	mutex_lock(&hdd_ctx->sta_mon_pno_lock);
+	req = hdd_ctx->sta_mon_pno_req;
+	dev = hdd_ctx->sta_mon_pno_dev;
+	reqid = hdd_ctx->sta_mon_pno_reqid;
+	if (!hdd_ctx->sta_mon_pno_initialized || !req)
+		goto unlock;
+	adapter = WLAN_HDD_GET_PRIV_PTR(dev);
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (ret || cds_is_fw_down() || adapter->delete_in_progress ||
+	    dev->reg_state != NETREG_REGISTERED || !netif_running(dev)) {
+		ret = -ENODEV;
+		goto finished;
+	}
+	ret = osif_vdev_sync_op_start(dev, &vdev_sync);
+	if (ret) {
+		retry = true;
+		goto unlock;
+	}
+	vdev = hdd_objmgr_get_vdev(adapter);
+	if (!vdev || req->vdev != vdev ||
+	    req->vdev_id != wlan_vdev_get_id(vdev)) {
+		ret = -ENODEV;
+		goto finished;
+	}
+	/* A copied request is not firmware-active and cannot bypass admission.
+	 * A still-owned radio waits for the next proven lease-release wakeup.
+	 */
+	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc))
+		goto unlock;
+	ucfg_scan_set_pno_reqid(vdev, reqid);
+	ret = wlan_cfg80211_sched_scan_submit(vdev, req);
+	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
+	if (ret == -EBUSY || ret == -EAGAIN) {
+		retry = true;
+		goto unlock;
+	}
+finished:
+	failed = ret != 0;
+	if (failed)
+		hdd_warn("Deferred PNO failed: reqid=%llu error=%d",
+			 reqid, ret);
+	else
+		hdd_info("Deferred PNO resumed: vdev=%u reqid=%llu",
+			 req->vdev_id, reqid);
+	released_req = req;
+	released_dev = dev;
+	hdd_ctx->sta_mon_pno_req = NULL;
+	hdd_ctx->sta_mon_pno_dev = NULL;
+unlock:
+	if (vdev)
+		hdd_objmgr_put_vdev(vdev);
+	if (vdev_sync)
+		osif_vdev_sync_op_stop(vdev_sync);
+	mutex_unlock(&hdd_ctx->sta_mon_pno_lock);
+	/* Only a genuine deferred START failure ends the accepted request.
+	 * An intentional pause/cancel never fabricates scan results or STOPPED.
+	 */
+	if (failed)
+		cfg80211_sched_scan_stopped_rtnl(hdd_ctx->wiphy, reqid);
+	rtnl_unlock();
+	qdf_mem_free(released_req);
+	if (released_dev)
+		dev_put(released_dev);
+	if (retry)
+		hdd_sta_mon_pno_queue(hdd_ctx, 100);
+}
+
+QDF_STATUS hdd_sta_mon_pno_init(struct hdd_context *hdd_ctx)
+{
+	QDF_STATUS status;
+
+	mutex_init(&hdd_ctx->sta_mon_pno_lock);
+	status = qdf_delayed_work_create(&hdd_ctx->sta_mon_pno_work,
+					hdd_sta_mon_pno_work, hdd_ctx);
+	if (QDF_IS_STATUS_SUCCESS(status))
+		WRITE_ONCE(hdd_ctx->sta_mon_pno_initialized, true);
+	return status;
+}
+
+void hdd_sta_mon_pno_deinit(struct hdd_context *hdd_ctx)
+{
+	struct pno_scan_req_params *req;
+	struct net_device *dev;
+
+	if (!READ_ONCE(hdd_ctx->sta_mon_pno_initialized))
+		return;
+	mutex_lock(&hdd_ctx->sta_mon_pno_lock);
+	WRITE_ONCE(hdd_ctx->sta_mon_pno_initialized, false);
+	req = hdd_ctx->sta_mon_pno_req;
+	dev = hdd_ctx->sta_mon_pno_dev;
+	hdd_ctx->sta_mon_pno_req = NULL;
+	hdd_ctx->sta_mon_pno_dev = NULL;
+	mutex_unlock(&hdd_ctx->sta_mon_pno_lock);
+	/* No requeue can pass the mutex after initialized is cleared. */
+	qdf_delayed_work_destroy(&hdd_ctx->sta_mon_pno_work);
+	qdf_mem_free(req);
+	if (dev)
+		dev_put(dev);
+}
+
+static int hdd_sta_mon_pno_defer(struct hdd_adapter *adapter,
+			       struct wlan_objmgr_vdev *vdev,
+			       struct cfg80211_sched_scan_request *request,
+			       uint8_t backoff)
+{
+	struct hdd_context *hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+	struct pno_scan_req_params *req;
+	int ret;
+
+	ret = wlan_cfg80211_sched_scan_prepare(vdev, request, backoff, &req);
+	if (ret)
+		return ret;
+	mutex_lock(&hdd_ctx->sta_mon_pno_lock);
+	if (!hdd_ctx->sta_mon_pno_initialized || hdd_ctx->sta_mon_pno_req) {
+		ret = -EBUSY;
+		goto out;
+	}
+	dev_hold(adapter->dev);
+	hdd_ctx->sta_mon_pno_dev = adapter->dev;
+	hdd_ctx->sta_mon_pno_req = req;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+	hdd_ctx->sta_mon_pno_reqid = request->reqid;
+#else
+	hdd_ctx->sta_mon_pno_reqid = 0;
+#endif
+	hdd_info("PNO deferred for exclusive monitor: vdev=%u reqid=%llu",
+		 req->vdev_id, hdd_ctx->sta_mon_pno_reqid);
+	req = NULL;
+	/* Publish then queue even if the lease cleared during conversion. */
+	qdf_delayed_work_start(&hdd_ctx->sta_mon_pno_work, 0);
+out:
+	mutex_unlock(&hdd_ctx->sta_mon_pno_lock);
+	qdf_mem_free(req);
+	return ret;
+}
+
 /**
  * __wlan_hdd_cfg80211_sched_scan_start() - cfg80211 scheduled scan(pno) start
  * @wiphy: Pointer to wiphy
@@ -1305,7 +1517,7 @@ static int __wlan_hdd_cfg80211_sched_scan_start(struct wiphy *wiphy,
 						struct net_device *dev,
 						struct
 						cfg80211_sched_scan_request
-						*request)
+						*request, bool defer)
 {
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
 	struct hdd_context *hdd_ctx;
@@ -1359,8 +1571,12 @@ static int __wlan_hdd_cfg80211_sched_scan_start(struct wiphy *wiphy,
 
 	scan_backoff_multiplier =
 			ucfg_get_scan_backoff_multiplier(hdd_ctx->psoc);
-	ret = wlan_cfg80211_sched_scan_start(vdev, request,
-					     scan_backoff_multiplier);
+	if (defer)
+		ret = hdd_sta_mon_pno_defer(adapter, vdev, request,
+					    scan_backoff_multiplier);
+	else
+		ret = wlan_cfg80211_sched_scan_start(vdev, request,
+						     scan_backoff_multiplier);
 	hdd_objmgr_put_vdev(vdev);
 
 	return ret;
@@ -1381,13 +1597,34 @@ int wlan_hdd_cfg80211_sched_scan_start(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
+	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(dev, &vdev_sync);
 	if (errno)
 		return errno;
 
-	errno = __wlan_hdd_cfg80211_sched_scan_start(wiphy, dev, request);
+	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
+		struct wlan_mlme_sta_mon_snapshot snapshot;
 
+		/* Only a healthy, already-exclusive native monitor may defer PNO.
+		 * Shared reservation failures retain their normal busy semantics.
+		 */
+		if (!READ_ONCE(hdd_ctx->sta_mon_pno_initialized) ||
+		    !wlan_mlme_sta_mon_get_active_snapshot(hdd_ctx->psoc,
+							 &snapshot) ||
+		    !snapshot.exclusive) {
+			errno = -EBUSY;
+			goto out;
+		}
+		errno = __wlan_hdd_cfg80211_sched_scan_start(wiphy, dev, request,
+							  true);
+	} else {
+		errno = __wlan_hdd_cfg80211_sched_scan_start(wiphy, dev, request,
+							  false);
+		wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
+	}
+
+out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -1401,6 +1638,8 @@ int wlan_hdd_sched_scan_stop(struct net_device *dev)
 	int ret;
 	bool pno_offload_enabled;
 
+	if (hdd_sta_mon_pno_cancel(dev))
+		return 0;
 	if (QDF_GLOBAL_FTM_MODE == hdd_get_conparam()) {
 		hdd_err("Command not allowed in FTM mode");
 		return -EINVAL;
@@ -1502,6 +1741,8 @@ int wlan_hdd_cfg80211_sched_scan_stop(struct wiphy *wiphy,
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
 
+	if (hdd_sta_mon_pno_cancel(dev))
+		return 0;
 	errno = osif_vdev_sync_op_start(dev, &vdev_sync);
 	if (errno)
 		return errno;
@@ -1529,6 +1770,8 @@ int wlan_hdd_cfg80211_sched_scan_stop(struct wiphy *wiphy,
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
 
+	if (hdd_sta_mon_pno_cancel(dev))
+		return 0;
 	errno = osif_vdev_sync_op_start(dev, &vdev_sync);
 	if (errno)
 		return errno;

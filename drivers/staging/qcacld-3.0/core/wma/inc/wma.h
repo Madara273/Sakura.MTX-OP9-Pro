@@ -864,6 +864,8 @@ struct wma_wlm_stats_data {
  * @num_dbs_hw_modes: Number of HW modes supported by the FW
  * @hw_mode: DBS HW mode list
  * @old_hw_mode_index: Previous configured HW mode index
+ * @sta_mon_hw_mode_pending: HW mode response still excludes monitor handoff
+ * @sta_mon_dual_mac_pending: Dual MAC response still excludes monitor handoff
  * @new_hw_mode_index: Current configured HW mode index
  * @peer_authorized_cb: peer authorized hdd callback
  * @ocb_config_req: OCB request context
@@ -988,6 +990,8 @@ typedef struct {
 	uint32_t num_dbs_hw_modes;
 	struct dbs_hw_mode_info hw_mode;
 	uint32_t old_hw_mode_index;
+	bool sta_mon_hw_mode_pending;
+	bool sta_mon_dual_mac_pending;
 	uint32_t new_hw_mode_index;
 	wma_peer_authorized_fp peer_authorized_cb;
 	struct sir_ocb_config *ocb_config_req;

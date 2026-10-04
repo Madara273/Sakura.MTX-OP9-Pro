@@ -3903,7 +3903,8 @@ bool policy_mgr_is_sta_mon_concurrency(struct wlan_objmgr_psoc *psoc);
  * Return: QDF_STATUS_SUCCESS if allowed, else send failure
  *
  */
-QDF_STATUS policy_mgr_check_mon_concurrency(struct wlan_objmgr_psoc *psoc);
+QDF_STATUS policy_mgr_check_mon_concurrency(struct wlan_objmgr_psoc *psoc,
+					  bool ap_owner, bool sta_ap_coexist);
 
 /**
  * policy_mgr_is_sta_chan_valid_for_connect_and_roam  - Check if given
