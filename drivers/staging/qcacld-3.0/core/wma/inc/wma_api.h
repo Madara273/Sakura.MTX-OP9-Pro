@@ -36,13 +36,15 @@
 #include <cdp_txrx_ops.h>
 #include "include/wlan_vdev_mlme.h"
 #include "wlan_mlme_vdev_mgr_interface.h"
+#include <cdp_txrx_injection.h>
 
 typedef void *WMA_HANDLE;
 
 #define WMA_MGMT_TX_INJECTION_DESC_ID 0xffff
 
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
-QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id);
+QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
+			    const struct cdp_tx_injection_params *params);
 QDF_STATUS
 wma_injection_channel_change_begin(u8 monitor_vdev_id, u32 chanfreq);
 void wma_injection_channel_change_end(bool channel_changed);
@@ -57,9 +59,55 @@ bool wma_injection_peer_map_complete(u8 vdev_id, const u8 *peer_addr,
 bool wma_injection_peer_unmap_complete(u8 vdev_id, u16 peer_id);
 void wma_injection_pre_stop_cleanup(void);
 void wma_injection_resume(void);
+QDF_STATUS wma_injection_coex_resume(uint8_t monitor_vdev_id,
+				     uint64_t generation);
+QDF_STATUS
+wma_injection_exclusive_resume(uint8_t monitor_id, uint64_t generation,
+				const uint8_t *interface_mac);
+void wma_injection_dp_release(qdf_nbuf_t nbuf, uint8_t slot_index);
+bool wma_injection_coex_is_quiesced(void);
+/* Triple-mode preflight: monitor+helper before CREATE, helper before open.
+ * This checks capacity; native object allocation still owns reservation.
+ */
+QDF_STATUS wma_injection_coex_resource_check(uint8_t additional_vdevs);
+bool wma_injection_handoff_is_quiesced(void);
+QDF_STATUS wma_injection_helper_attach_vdev(struct wlan_objmgr_vdev *vdev);
+void wma_injection_helper_create_result(struct wlan_objmgr_vdev *vdev,
+					QDF_STATUS status);
+void wma_injection_helper_peer_created(uint8_t vdev_id);
+bool wma_injection_helper_has_self_peer(struct wlan_objmgr_vdev *vdev);
+QDF_STATUS wma_injection_helper_delete_no_peer(struct wlan_objmgr_vdev *vdev);
+bool wma_injection_helper_self_peer_deleted(struct wlan_objmgr_vdev *vdev,
+					   QDF_STATUS status);
+bool wma_injection_helper_deleted(uint8_t vdev_id);
+QDF_STATUS wma_injection_helper_start_send(struct vdev_mlme_obj *vdev_mlme,
+					   uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_start_rsp(struct vdev_mlme_obj *vdev_mlme,
+					  struct vdev_start_response *rsp);
+QDF_STATUS wma_injection_helper_start_continue(struct vdev_mlme_obj *vdev_mlme,
+					       uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_up_send(struct vdev_mlme_obj *vdev_mlme,
+					uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_notify_up(struct vdev_mlme_obj *vdev_mlme,
+					  uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_disconnect(struct vdev_mlme_obj *vdev_mlme,
+					   uint16_t data_len, void *data,
+					   bool legacy_only);
+QDF_STATUS wma_injection_helper_stop_send(struct vdev_mlme_obj *vdev_mlme,
+					  uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_stop_rsp(struct vdev_mlme_obj *vdev_mlme,
+					 struct vdev_stop_response *rsp);
+QDF_STATUS wma_injection_helper_stop_continue(struct vdev_mlme_obj *vdev_mlme,
+					      uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_down_send(struct vdev_mlme_obj *vdev_mlme,
+					  uint16_t data_len, void *data);
+QDF_STATUS wma_injection_helper_notify_down(struct vdev_mlme_obj *vdev_mlme,
+					    uint16_t data_len, void *data);
+
 #else
 static inline QDF_STATUS
-wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id)
+wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
+		 const struct cdp_tx_injection_params *params)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
@@ -72,6 +120,19 @@ wma_injection_channel_change_begin(u8 monitor_vdev_id, u32 chanfreq)
 
 static inline void wma_injection_channel_change_end(bool channel_changed)
 {
+}
+
+static inline QDF_STATUS
+wma_injection_coex_resume(uint8_t monitor_vdev_id, uint64_t generation)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline QDF_STATUS
+wma_injection_exclusive_resume(uint8_t monitor_id, uint64_t generation,
+				const uint8_t *interface_mac)
+{
+	return QDF_STATUS_E_NOSUPPORT;
 }
 
 static inline bool
@@ -113,12 +174,33 @@ static inline bool wma_injection_peer_unmap_complete(u8 vdev_id, u16 peer_id)
 	return false;
 }
 
+static inline void
+wma_injection_dp_release(qdf_nbuf_t nbuf, uint8_t slot_index)
+{
+}
+
 static inline void wma_injection_pre_stop_cleanup(void)
 {
 }
 
 static inline void wma_injection_resume(void)
 {
+}
+
+static inline bool wma_injection_coex_is_quiesced(void)
+{
+	return true;
+}
+
+static inline QDF_STATUS
+wma_injection_coex_resource_check(uint8_t additional_vdevs)
+{
+	return QDF_STATUS_E_NOSUPPORT;
+}
+
+static inline bool wma_injection_handoff_is_quiesced(void)
+{
+	return false;
 }
 #endif
 
@@ -344,6 +426,22 @@ QDF_STATUS wma_remove_beacon_filter(WMA_HANDLE wma,
 
 QDF_STATUS wma_add_beacon_filter(WMA_HANDLE wma,
 				struct beacon_filter_param *filter_params);
+
+/* Private monitor beacon lease; ordinary reporting retains its own state. */
+void wma_sta_mon_beacon_init(WMA_HANDLE wma);
+void wma_sta_mon_beacon_deinit(WMA_HANDLE wma);
+void wma_sta_mon_beacon_vdev_attach(struct wlan_objmgr_vdev *vdev);
+void wma_sta_mon_beacon_vdev_detach(struct wlan_objmgr_vdev *vdev);
+uint32_t wma_sta_mon_beacon_cookie(uint32_t id);
+QDF_STATUS wma_sta_mon_beacon_set_param(WMA_HANDLE wmi_handle,
+				      uint32_t id, uint32_t value,
+				      uint32_t cookie);
+QDF_STATUS wma_sta_mon_beacon_acquire(struct wlan_objmgr_psoc *psoc,
+				    uint8_t sta_id, uint8_t monitor_id,
+				    uint64_t generation);
+QDF_STATUS wma_sta_mon_beacon_release(struct wlan_objmgr_psoc *psoc,
+				    uint8_t monitor_id);
+
 QDF_STATUS wma_send_adapt_dwelltime_params(WMA_HANDLE handle,
 			struct adaptive_dwelltime_params *dwelltime_params);
 

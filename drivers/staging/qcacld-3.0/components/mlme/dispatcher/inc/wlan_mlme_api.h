@@ -3336,4 +3336,5 @@ wlan_mlme_get_p2p_p2p_conc_support(struct wlan_objmgr_psoc *psoc)
 	return false;
 }
 #endif
+uint32_t wlan_mlme_get_vdev_mac_id(struct wlan_objmgr_pdev *pdev, uint8_t vdev_id);
 #endif /* _WLAN_MLME_API_H_ */

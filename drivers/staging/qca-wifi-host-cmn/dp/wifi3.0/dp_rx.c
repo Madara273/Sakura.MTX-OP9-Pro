@@ -504,6 +504,14 @@ dp_rx_deliver_raw(struct dp_vdev *vdev, qdf_nbuf_t nbuf_list,
 	qdf_nbuf_t deliver_list_head = NULL;
 	qdf_nbuf_t deliver_list_tail = NULL;
 	qdf_nbuf_t nbuf;
+	ol_txrx_rsim_rx_decap_fp rx_decap = READ_ONCE(vdev->osif_rsim_rx_decap);
+	ol_txrx_rx_fp osif_rx = READ_ONCE(vdev->osif_rx);
+
+	/* Private RAW helpers need no normal OSIF decapsulation callback. */
+	if (qdf_unlikely(!rx_decap || !osif_rx)) {
+		qdf_nbuf_list_free(nbuf_list);
+		return;
+	}
 
 	nbuf = nbuf_list;
 	while (nbuf) {
@@ -527,10 +535,10 @@ dp_rx_deliver_raw(struct dp_vdev *vdev, qdf_nbuf_t nbuf_list,
 		nbuf = next;
 	}
 
-	vdev->osif_rsim_rx_decap(vdev->osif_vdev, &deliver_list_head,
+	rx_decap(vdev->osif_vdev, &deliver_list_head,
 				 &deliver_list_tail, peer->mac_addr.raw);
 
-	vdev->osif_rx(vdev->osif_vdev, deliver_list_head);
+	osif_rx(vdev->osif_vdev, deliver_list_head);
 }
 
 #ifndef FEATURE_WDS
@@ -1766,6 +1774,10 @@ void dp_rx_deliver_to_stack(struct dp_soc *soc,
 
 	if (qdf_unlikely(vdev->rx_decap_type == htt_cmn_pkt_type_raw) ||
 			(vdev->rx_decap_type == htt_cmn_pkt_type_native_wifi)) {
+		if (!READ_ONCE(vdev->osif_rsim_rx_decap)) {
+			qdf_nbuf_list_free(nbuf_head);
+			return;
+		}
 		vdev->osif_rsim_rx_decap(vdev->osif_vdev, &nbuf_head,
 				&nbuf_tail, peer->mac_addr.raw);
 	}
@@ -2791,6 +2803,11 @@ done:
 	nbuf = nbuf_head;
 	while (nbuf) {
 		next = nbuf->next;
+		/* Consume private RAW MPDUs before the normal RAW drop/decap. */
+		if (dp_mon_sta_coex_rx(soc, nbuf, &next)) {
+			nbuf = next;
+			continue;
+		}
 		if (qdf_unlikely(dp_rx_is_raw_frame_dropped(nbuf))) {
 			nbuf = next;
 			DP_STATS_INC(soc, rx.err.raw_frm_drop, 1);

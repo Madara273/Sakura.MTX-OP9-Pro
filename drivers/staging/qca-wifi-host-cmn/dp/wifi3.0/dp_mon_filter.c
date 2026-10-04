@@ -305,6 +305,24 @@ static void dp_mon_filter_ht2_setup(struct dp_soc *soc, struct dp_pdev *pdev,
 		dst_filter = DP_MON_FILTER_GET(tlv_filter, FILTER_MD_CTRL);
 		dst_filter |= src_filter;
 		DP_MON_FILTER_SET(tlv_filter, FILTER_MD_CTRL, dst_filter);
+
+		/* Preserve the RX layout when the contributing filter defines it. */
+		if (mon_filter->tlv_filter.offset_valid) {
+			tlv_filter->rx_packet_offset =
+				mon_filter->tlv_filter.rx_packet_offset;
+			tlv_filter->rx_header_offset =
+				mon_filter->tlv_filter.rx_header_offset;
+			tlv_filter->rx_mpdu_end_offset =
+				mon_filter->tlv_filter.rx_mpdu_end_offset;
+			tlv_filter->rx_mpdu_start_offset =
+				mon_filter->tlv_filter.rx_mpdu_start_offset;
+			tlv_filter->rx_msdu_end_offset =
+				mon_filter->tlv_filter.rx_msdu_end_offset;
+			tlv_filter->rx_msdu_start_offset =
+				mon_filter->tlv_filter.rx_msdu_start_offset;
+			tlv_filter->rx_attn_offset =
+				mon_filter->tlv_filter.rx_attn_offset;
+		}
 	}
 
 	dp_mon_filter_show_filter(pdev, 0, filter);
@@ -820,6 +838,28 @@ void dp_mon_filter_reset_rx_enh_capture(struct dp_pdev *pdev)
 }
 #endif /* WLAN_RX_PKT_CAPTURE_ENH */
 
+/* The dedicated monitor ring can report dropped/unknown-peer frames without
+ * changing the regular STA ring's FP filters or TLV layout.
+ */
+static void dp_mon_filter_set_sta_coex(struct dp_pdev *pdev,
+				      struct dp_mon_filter *filter)
+{
+#ifdef FEATURE_FRAME_INJECTION_SUPPORT
+	if (!test_bit(0, &pdev->sta_mon_flags) ||
+	    !pdev->soc->wlan_cfg_ctx->rxdma1_enable)
+		return;
+
+	filter->tlv_filter.enable_mo = 1;
+	filter->tlv_filter.mo_mgmt_filter = FILTER_MGMT_ALL;
+	filter->tlv_filter.mo_ctrl_filter = FILTER_CTRL_ALL;
+	filter->tlv_filter.mo_data_filter = FILTER_DATA_ALL;
+	filter->tlv_filter.enable_md = 1;
+	filter->tlv_filter.md_mgmt_filter = FILTER_MGMT_ALL;
+	filter->tlv_filter.md_ctrl_filter = FILTER_CTRL_ALL;
+	filter->tlv_filter.md_data_filter = FILTER_DATA_ALL;
+#endif
+}
+
 /**
  * dp_mon_filter_setup_mon_mode() - Setup the Rx monitor mode filter
  * @pdev: DP pdev handle
@@ -847,6 +887,7 @@ void dp_mon_filter_setup_mon_mode(struct dp_pdev *pdev)
 
 	filter.valid = true;
 	dp_mon_filter_set_mon_cmn(pdev, &filter);
+	dp_mon_filter_set_sta_coex(pdev, &filter);
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
 	/* Monitor buffer ring frame filter overrides */
 	if (soc->hal_soc &&
@@ -871,6 +912,7 @@ void dp_mon_filter_setup_mon_mode(struct dp_pdev *pdev)
 	/* Enabled the filter */
 	filter.valid = true;
 	dp_mon_filter_set_status_cmn(pdev, &filter);
+	dp_mon_filter_set_sta_coex(pdev, &filter);
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
 	/* Monitor status ring frame filter overrides */
 	if (soc->hal_soc &&
@@ -1029,11 +1071,12 @@ void dp_mon_filter_reset_rx_pkt_log_lite(struct dp_pdev *pdev)
  * This function is used as WAR till WIN cleans up the monitor mode
  * function for targets where monitor mode is not enabled.
  *
- * Returns: true
+ * Returns: true if a monitor vdev or its configured filters remain
  */
 static inline bool dp_mon_should_reset_buf_ring_filter(struct dp_pdev *pdev)
 {
-	return (pdev->monitor_vdev) ? true : false;
+	/* Vdev detach can precede filter reset during monitor teardown. */
+	return pdev->monitor_vdev || pdev->monitor_configured;
 }
 #else
 static inline bool dp_mon_should_reset_buf_ring_filter(struct dp_pdev *pdev)

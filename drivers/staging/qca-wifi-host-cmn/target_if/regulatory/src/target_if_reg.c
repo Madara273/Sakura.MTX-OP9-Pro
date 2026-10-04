@@ -27,6 +27,7 @@
 #include <wlan_reg_tgt_api.h>
 #include <target_if.h>
 #include <target_if_reg.h>
+#include <cdp_txrx_injection.h>
 #include <wmi_unified_reg_api.h>
 #include <qdf_platform.h>
 #include <target_if_reg_11d.h>
@@ -703,12 +704,39 @@ tgt_if_regulatory_set_tpc_power(struct wlan_objmgr_psoc *psoc,
 				uint8_t vdev_id,
 				struct reg_tpc_power_info *param)
 {
-	wmi_unified_t wmi_handle = get_wmi_unified_hdl_from_psoc(psoc);
+	wmi_unified_t wmi_handle;
+	struct reg_tpc_power_info power;
+	struct wlan_objmgr_vdev *vdev;
+	struct wlan_objmgr_pdev *pdev;
+	uint64_t ticket;
+	QDF_STATUS status;
 
-	if (!wmi_handle)
+	if (!param)
+		return QDF_STATUS_E_INVAL;
+	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(psoc, vdev_id,
+						  WLAN_REGULATORY_NB_ID);
+	if (!vdev)
 		return QDF_STATUS_E_FAILURE;
 
-	return wmi_unified_send_set_tpc_power_cmd(wmi_handle, vdev_id, param);
+	/* The cache and WMI must observe the same immutable send snapshot. */
+	qdf_mem_copy(&power, param, sizeof(power));
+	ticket = wma_injection_tpc_begin(vdev, &power);
+	pdev = wlan_vdev_get_pdev(vdev);
+	wmi_handle = get_wmi_unified_hdl_from_pdev(pdev);
+
+	if (!wmi_handle) {
+		status = QDF_STATUS_E_FAILURE;
+		goto free_vdevref;
+	}
+	status = wmi_unified_send_set_tpc_power_cmd(wmi_handle, vdev_id, &power);
+	if (QDF_IS_STATUS_ERROR(status))
+		target_if_err("send tpc power cmd failed, status: %d", status);
+
+free_vdevref:
+	wma_injection_tpc_end(vdev, ticket, status);
+	wlan_objmgr_vdev_release_ref(vdev, WLAN_REGULATORY_NB_ID);
+
+	return status;
 }
 
 /**
