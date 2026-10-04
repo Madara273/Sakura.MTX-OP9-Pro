@@ -5252,9 +5252,6 @@ int wlan_hdd_cfg80211_start_bss(struct hdd_adapter *adapter,
 	if (ret != 0)
 		return ret;
 
-	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc))
-		return -EINVAL;
-
 	ucfg_mlme_get_sap_force_11n_for_11ac(hdd_ctx->psoc,
 					     &sap_force_11n_for_11ac);
 	ucfg_mlme_get_go_force_11n_for_11ac(hdd_ctx->psoc,
