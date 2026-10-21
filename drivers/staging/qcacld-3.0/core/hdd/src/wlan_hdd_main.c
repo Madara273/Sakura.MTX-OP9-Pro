@@ -4583,8 +4583,14 @@ int hdd_stop_no_trans(struct net_device *dev)
 		return -ENODEV;
 	}
 
-	/* Root can freeze the interface */
-	if (uid_eq(current_euid(), GLOBAL_ROOT_UID)) {
+	/*
+	 * Root can freeze a monitor interface. Any other interface is closed
+	 * normally: freezing a station interface leaves it unopenable for the
+	 * wifi HAL, which does not run as root, until the next reboot.
+	 */
+	if (uid_eq(current_euid(), GLOBAL_ROOT_UID) &&
+	    (wlan_hdd_is_session_type_monitor(adapter->device_mode) ||
+	     dev->type == ARPHRD_IEEE80211_RADIOTAP)) {
 		hdd_err("Freezing interface.");
 		cancel_work_sync(&adapter->defrost_work);
 		qdf_atomic_set(&adapter->defrost_scheduled, 0);
