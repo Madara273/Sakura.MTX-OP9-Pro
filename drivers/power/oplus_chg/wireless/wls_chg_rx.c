@@ -18,20 +18,19 @@
 #include "wls_chg_fw.h"
 
 struct oplus_wls_chg_firmware *oplus_wls_firmware;
-static struct oplus_wls_chg_firmware *oplus_wls_chg_find_first_firmware(void)
+static struct oplus_wls_chg_firmware *oplus_wls_chg_find_firmware(const char *name)
 {
-	struct oplus_wls_chg_firmware *wls_firmware;
+	size_t i;
 
-	wls_firmware = &oplus_wls_firmware_start_fw;
+	if (!name)
+		return NULL;
 
-	wls_firmware--;
-	while (wls_firmware != NULL &&
-	       wls_firmware->magic0 == OPLUS_CHG_FIRMWARE_MAGIC0 &&
-	       wls_firmware->magic1 == OPLUS_CHG_FIRMWARE_MAGIC1)
-		wls_firmware--;
+	for (i = 0; i < ARRAY_SIZE(oplus_wls_chg_firmwares); i++) {
+		if (!strcasecmp(oplus_wls_chg_firmwares[i].name, name))
+			return &oplus_wls_chg_firmwares[i];
+	}
 
-	wls_firmware++;
-	return wls_firmware;
+	return NULL;
 }
 
 bool is_rx_ic_available(struct oplus_wls_chg_rx *wls_rx)
@@ -755,7 +754,6 @@ int oplus_chg_wls_rx_smt_test(struct oplus_wls_chg_rx *wls_rx)
 int oplus_chg_wls_rx_init(struct oplus_chg_wls *wls_dev)
 {
 	struct oplus_wls_chg_rx *wls_rx;
-	struct oplus_wls_chg_firmware *wls_firmware;
 	wls_rx = devm_kzalloc(wls_dev->dev, sizeof(struct oplus_wls_chg_rx), GFP_KERNEL);
 	if (wls_rx == NULL) {
 		pr_err("alloc memory error\n");
@@ -763,27 +761,14 @@ int oplus_chg_wls_rx_init(struct oplus_chg_wls *wls_dev)
 		return -ENOMEM;
 	}
 
-	wls_firmware = oplus_wls_chg_find_first_firmware();
-	if (wls_firmware == NULL)
-		pr_err("The wls_firmware address error!");
-	while (wls_firmware != NULL &&
-		wls_firmware->magic0 == OPLUS_CHG_FIRMWARE_MAGIC0 &&
-		wls_firmware->magic1 == OPLUS_CHG_FIRMWARE_MAGIC1) {
-		if (!strcasecmp(wls_firmware->name, wls_dev->wls_chg_fw_name)) {
-			oplus_wls_firmware = wls_firmware;
-			pr_err("The target firmware is %s, has select the wls_firmware is %s\n",
-			       wls_dev->wls_chg_fw_name, wls_firmware->name);
-			break;
-		}
-		wls_firmware++;
-	}
-
-	if(oplus_wls_firmware == NULL){
+	oplus_wls_firmware = oplus_wls_chg_find_firmware(wls_dev->wls_chg_fw_name);
+	if (!oplus_wls_firmware) {
 		pr_err("No wireless firmware available to match\n");
 		devm_kfree(wls_dev->dev, wls_rx);
 		return -EFAULT;
 	}
 
+	pr_info("Selected wireless firmware: %s\n", oplus_wls_firmware->name);
 
 	wls_dev->wls_rx = wls_rx;
 	wls_rx->dev = wls_dev->dev;
