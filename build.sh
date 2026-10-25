@@ -1,6 +1,6 @@
 #!/bin/bash
 # build.sh - Android Kernel Build Script to k5.x
-# Make sure clang is added to your path before using this script
+# The selected toolchain is downloaded automatically before compilation
 # Semi-automatic script suitable for use in Ubuntu, Debian, Kali and NetHunter
 # Author Madara273
 # ----------------------------------------------------------------------------
@@ -16,6 +16,7 @@ PINK=$'\033[38;5;206m'
 CYAN=$'\033[0;36m'
 BLUE=$'\033[0;34m'
 GREY=$'\033[38;5;250m'   # light grey (256-color)
+DARK_GREY=$'\033[38;5;240m'
 NC=$'\033[0m'            # reset
 
 # ---- Get the absolute path of the current directory ----
@@ -65,7 +66,7 @@ echo "$KBUILD_HOST"	# Output the value of KBUILD_HOST
 # ---- Prompt for Compiler ----
 echo -e "\n${YELLOW}Choose your weapon for compilation:${NC}"
 echo -e "${PINK}1.👉 BEST EVA GCC (Bleeding Edge)${NC}"
-echo -e "${GREEN}2.👉 SAKURA CLANG (God Mode)${NC}"
+echo -e "${GREEN}2.👉 NEUTRON CLANG${NC}"
 read -t 5 -rp "Compiler [1]: " COMPILER_CHOICE
 COMPILER_CHOICE="${COMPILER_CHOICE:-1}"
 
@@ -92,8 +93,8 @@ TARGET_DTC_FLAGS="-q"
 	TARGET_CLANG_TRIPLE=""
 	CC_ADDITIONAL_FLAGS="-Wno-error=unused-function CROSS_COMPILE_COMPAT=arm-linux-gnueabi- GCC_LTO=1 GRAPHITE=1"
 	} || {
-	echo -e "${GREEN}Sakura Clang engaged. Prepare for speed.${NC}"
-	export PATH="$(pwd)/../Madara-Built/SAKURA/bin:$PATH"
+	echo -e "${GREEN}Neutron Clang engaged. Prepare for speed.${NC}"
+	export PATH="$(pwd)/../Madara-Built/NEUTRON/bin:$PATH"
 	export CLANG_TRIPLE="aarch64-linux-gnu-"
 	export CROSS_COMPILE="aarch64-linux-gnu-"
 	export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
@@ -199,74 +200,56 @@ display_build_info(){
 
 # ---- Function for interactive action selection with timeout ----
 choose_action(){
+	local choice
+
 	while true; do
 		echo -e "Choose an action:"
 		echo -e "${GREEN}1.👉 Install necessary packages${NC}"
-		echo -e "${GREEN}2.👉 Start kernel compilation${NC}"
+		echo -e "${GREEN}2.👉 Start kernel compilation (default)${NC}"
 		echo -e "${GREEN}3.👉 Exit program${NC}"
 
-		# Set timeout for user input (5 seconds)
-		read -t 5 -p "Enter the action number (1/2/3): " choice
+		choice=""
+		read -r -t 5 -p "Enter the action number (1/2/3) [2]: " choice || choice=2
+		choice="${choice:-2}"
 
-		# If no input is provided within 5 seconds, default to action 1 and then 2
-		[ -z "$choice" ] && echo -e "${YELLOW}No input detected. Automatically selecting action 1.${NC}" && install_packages && echo -e "${YELLOW}Proceeding to action 2 automatically.${NC}" && compile_kernel && break
-
-		case $choice in
-			1 ) install_packages;;
-			2 ) compile_kernel;;
-			3 ) exit;;
+		case "$choice" in
+			1 ) install_packages || return $?;;
+			2 ) compile_kernel; return $?;;
+			3 ) return 0;;
 			* ) echo -e "${RED}Invalid choice. Please enter 1, 2, or 3.${NC}";;
 		esac
 	done
 }
 
-# Function for "smart" installation
-pkg_install() {
-	[ -f /etc/arch-release ] && [ -n "$1" ] && sudo pacman -S --needed --noconfirm "$1"
-	[ ! -f /etc/arch-release ] && [ -n "$2" ] && sudo apt-get install -y "$2"
-}
-
 # ---- Install packages ----
 install_packages(){
-	echo -e "${YELLOW}Starting package installation...${NC}"
+	local -a packages
 
-	# pkg_install "Name Arch" "Name Debian"
-	pkg_install "bc" "bc"
-	pkg_install "bison" "bison"
-	pkg_install "base-devel" "build-essential"
-	pkg_install "zstd" "zstd"
-	pkg_install "clang" "clang"
-	pkg_install "lld" "lld"
-	pkg_install "flex" "flex"
-	pkg_install "gnupg" "gnupg"
-	pkg_install "gperf" "gperf"
-	pkg_install "ccache" "ccache"
-	pkg_install "lz4" "liblz4-tool"
-	pkg_install "sdl12-compat" "libsdl1.2-dev"
-	pkg_install "libxml2" "libxml2"
-	pkg_install "" "libxml2-utils"
-	pkg_install "libpng" "pngcrush"
-	pkg_install "schedtool" "schedtool"
-	pkg_install "squashfs-tools" "squashfs-tools"
-	pkg_install "libxslt" "xsltproc"
-	pkg_install "zlib" "zlib1g-dev"
-	pkg_install "ncurses" "libncurses5-dev"
-	pkg_install "bzip2" "bzip2"
-	pkg_install "git" "git"
-	pkg_install "gcc" "gcc"
-	pkg_install "gcc" "g++"
-	pkg_install "openssl" "libssl-dev"
-	pkg_install "openssl" "openssl"
-	pkg_install "aarch64-linux-gnu-gcc" "gcc-aarch64-linux-gnu"
-	pkg_install "gcc-arm-linux-gnueabi" "gcc-arm-linux-gnueabi"
-	pkg_install "llvm" "llvm"
-	pkg_install "python-pip" "python3-pip"
-	pkg_install "cpio" "cpio"
-	pkg_install "binutils" "binutils"
-	pkg_install "zip" "zip"
-	pkg_install "dtc" "device-tree-compiler"
-	pkg_install "jdk21-openjdk" "default-jre"
-	pkg_install "jdk21-openjdk" "openjdk-21-jdk"
+	echo -e "${YELLOW}Starting package installation...${NC}"
+	[ -f /etc/arch-release ] && {
+		packages=(
+			bc bison base-devel zstd clang
+			lld flex gnupg gperf ccache
+			lz4 sdl12-compat libxml2 libpng schedtool
+			squashfs-tools libxslt zlib ncurses bzip2
+			git gcc openssl aarch64-linux-gnu-gcc gcc-arm-linux-gnueabi
+			llvm python-pip cpio binutils zip
+			dtc jdk21-openjdk
+		)
+		sudo pacman -S --needed --noconfirm "${packages[@]}" || return $?
+	} || {
+		packages=(
+			bc bison build-essential zstd clang
+			lld flex gnupg gperf ccache
+			liblz4-tool libsdl1.2-dev libxml2 libxml2-utils pngcrush
+			schedtool squashfs-tools xsltproc zlib1g-dev libncurses5-dev
+			bzip2 git gcc g++ libssl-dev
+			openssl gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi llvm python3-pip
+			cpio binutils zip device-tree-compiler default-jre
+			openjdk-21-jdk
+		)
+		sudo apt-get install -y "${packages[@]}" || return $?
+	}
 
 	echo -e "${GREEN}Necessary packages successfully installed.${NC}"
 }
@@ -338,6 +321,25 @@ make_defconfig(){
 	make $FINAL_KERNEL_BUILD_PARA $DEFCONFIG_NAME || { echo -e "${RED}Failed to create default kernel configuration.${NC}"; exit 1; }
 	echo -e "${GREEN}Default kernel configuration created successfully.${NC}"
 	echo -e "${YELLOW}------------------------------${NC}"
+}
+
+prepare_ksu_headers(){
+	grep -q '^CONFIG_KSU=[ym]$' "$TARGET_OUT/.config" || return 0
+
+	# The preinit userspace runner needs sanitised UAPI headers, independently
+	# of CONFIG_HEADERS_INSTALL and without installing headers system-wide.
+	echo -e "${DARK_GREY}Preparing UAPI headers for KernelSU preinit...${NC}"
+	(
+		set -o pipefail
+		make $FINAL_KERNEL_BUILD_PARA headers 2>&1 |
+			while IFS= read -r line || [ -n "$line" ]; do
+				printf '%s%s%s\n' "$DARK_GREY" "$line" "$NC"
+			done
+	) || return $?
+	[ -f "$TARGET_OUT/usr/include/linux/unistd.h" ] || {
+		echo -e "${RED}KernelSU preinit UAPI headers were not generated.${NC}"
+		return 1
+	}
 }
 
 # ---- Function for building a kernel with color output and countdown ----
@@ -805,49 +807,133 @@ display_kernel_version_info() {
 	echo -e "${PURPLE}**********************************************${NC}"
 }
 
+setup_eva_gcc() {
+	local toolchain_dir="$1"
+	local release="18102026"
+	local checksum="b3bd7cb52f1eec6a7bb88519eb3e8ac97f83e39b4fc0f13d5dc3ccfaad14b136"
+	local asset="eva-gcc-arm64-$release.xz"
+	local stage
+
+	[ -x "$toolchain_dir/EVA/bin/aarch64-elf-gcc" ] &&
+	[ -f "$toolchain_dir/EVA/.release" ] &&
+	[ "$(cat "$toolchain_dir/EVA/.release")" = "$release" ] && return 0
+
+	echo -e "${GREEN}Downloading Eva GCC $release...${NC}"
+	stage=$(mktemp -d "$toolchain_dir/.eva-gcc.XXXXXX") || return 1
+	curl -fL --retry 3 \
+		"https://github.com/mvaisakh/gcc-build/releases/download/$release/$asset" \
+		-o "$stage/$asset" || {
+		echo -e "${RED}Error downloading Eva GCC!${NC}"
+		rm -rf "$stage"
+		return 1
+	}
+
+	printf '%s  %s\n' "$checksum" "$stage/$asset" | sha256sum --check --status || {
+		echo -e "${RED}Eva GCC archive checksum mismatch!${NC}"
+		rm -rf "$stage"
+		return 1
+	}
+
+	mkdir -p "$stage/install" || { rm -rf "$stage"; return 1; }
+	tar -xf "$stage/$asset" -C "$stage/install" --strip-components=1 &&
+	[ -x "$stage/install/bin/aarch64-elf-gcc" ] &&
+	[ "$("$stage/install/bin/aarch64-elf-gcc" -dumpmachine)" = "aarch64-elf" ] || {
+		echo -e "${RED}Error extracting or validating Eva GCC!${NC}"
+		rm -rf "$stage"
+		return 1
+	}
+	printf '%s\n' "$release" > "$stage/install/.release" || { rm -rf "$stage"; return 1; }
+
+	# Preserve the existing compiler until the replacement is ready.
+	[ ! -e "$toolchain_dir/EVA" ] || {
+		mv "$toolchain_dir/EVA" "$stage/previous" || { rm -rf "$stage"; return 1; }
+	}
+	mv "$stage/install" "$toolchain_dir/EVA" || {
+		[ ! -e "$stage/previous" ] || mv "$stage/previous" "$toolchain_dir/EVA" || {
+			echo -e "${RED}Previous Eva GCC preserved at $stage/previous${NC}"
+			return 1
+		}
+		rm -rf "$stage"
+		return 1
+	}
+	rm -rf "$stage"
+}
+
+setup_neutron_clang() {
+	local toolchain_dir="$1"
+	local release="06092026"
+	local checksum="531083928c8e37f6b31e324dbfd0b5a8323f989b1c57ff2c1368b889b5b1bd30"
+	local asset="neutron-clang-$release.tar.zst"
+	local stage
+
+	[ -x "$toolchain_dir/NEUTRON/bin/clang" ] &&
+	[ -x "$toolchain_dir/NEUTRON/bin/ld.lld" ] &&
+	[ -f "$toolchain_dir/NEUTRON/.release" ] &&
+	[ "$(cat "$toolchain_dir/NEUTRON/.release")" = "$release" ] && return 0
+
+	echo -e "${GREEN}Downloading Neutron Clang $release...${NC}"
+	stage=$(mktemp -d "$toolchain_dir/.neutron-clang.XXXXXX") || return 1
+	curl -fL --retry 3 \
+		"https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/$release/$asset" \
+		-o "$stage/$asset" || {
+		echo -e "${RED}Error downloading Neutron Clang!${NC}"
+		rm -rf "$stage"
+		return 1
+	}
+
+	printf '%s  %s\n' "$checksum" "$stage/$asset" | sha256sum --check --status || {
+		echo -e "${RED}Neutron Clang archive checksum mismatch!${NC}"
+		rm -rf "$stage"
+		return 1
+	}
+
+	mkdir -p "$stage/install" || { rm -rf "$stage"; return 1; }
+	tar --zstd -xf "$stage/$asset" -C "$stage/install" --strip-components=1 &&
+	[ -x "$stage/install/bin/clang" ] &&
+	[ -x "$stage/install/bin/ld.lld" ] &&
+	"$stage/install/bin/clang" --version > /dev/null || {
+		echo -e "${RED}Error extracting or validating Neutron Clang!${NC}"
+		rm -rf "$stage"
+		return 1
+	}
+	printf '%s\n' "$release" > "$stage/install/.release" || { rm -rf "$stage"; return 1; }
+
+	# Preserve the existing compiler until the replacement is ready.
+	[ ! -e "$toolchain_dir/NEUTRON" ] || {
+		mv "$toolchain_dir/NEUTRON" "$stage/previous" || { rm -rf "$stage"; return 1; }
+	}
+	mv "$stage/install" "$toolchain_dir/NEUTRON" || {
+		[ ! -e "$stage/previous" ] || mv "$stage/previous" "$toolchain_dir/NEUTRON" || {
+			echo -e "${RED}Previous Neutron Clang preserved at $stage/previous${NC}"
+			return 1
+		}
+		rm -rf "$stage"
+		return 1
+	}
+	rm -rf "$stage"
+}
+
 setup_toolchains() {
 	local TOOLCHAIN_DIR="$(pwd)/../Madara-Built"
 	echo -e "${YELLOW}Setting up toolchains in $TOOLCHAIN_DIR...${NC}"
-	mkdir -p "$TOOLCHAIN_DIR"
+	mkdir -p "$TOOLCHAIN_DIR" || return 1
 
-	# Sakura Clang
-	[ -f "$TOOLCHAIN_DIR/SAKURA/bin/clang" ] || {
-		echo -e "${GREEN}Downloading Sakura Clang...${NC}"
-		mkdir -p "$TOOLCHAIN_DIR/SAKURA"
-		local DOWNLOAD_URL=$(curl -sL "https://api.github.com/repos/Madara273/Sakura-Clang-Compiler/releases/tags/Sakura-Clang-R01" | grep -oP '"browser_download_url": "\K[^"]+' | head -n 1)
-		local FILE="sakura-clang-temp.tar.zst"
-
-		[ -n "$DOWNLOAD_URL" ] || { echo -e "${RED}Error: Release asset not found!${NC}"; rm -rf "$TOOLCHAIN_DIR/SAKURA"; return 1; }
-
-		wget -q --show-progress -L "$DOWNLOAD_URL" -O "$TOOLCHAIN_DIR/$FILE" || {
-			echo -e "${RED}Error downloading Sakura Clang!${NC}"
-			rm -rf "$TOOLCHAIN_DIR/$FILE" "$TOOLCHAIN_DIR/SAKURA"
-			return 1
-		}
-
-		tar --zstd -xf "$TOOLCHAIN_DIR/$FILE" -C "$TOOLCHAIN_DIR/SAKURA" --strip-components=1
-		rm -f "$TOOLCHAIN_DIR/$FILE"
+	[ "$COMPILER_CHOICE" == "1" ] && {
+		setup_eva_gcc "$TOOLCHAIN_DIR" || return 1
+		echo -e "${GREEN}Eva GCC is ready.${NC}"
+		return 0
 	}
 
-	# Eva GCC (Fixed)
-	[ -f "$TOOLCHAIN_DIR/EVA/bin/aarch64-elf-gcc" ] || {
-		echo -e "${GREEN}Downloading Eva GCC...${NC}"
-		mkdir -p "$TOOLCHAIN_DIR/EVA"
-		local VERSION=$(curl -sL https://github.com/mvaisakh/gcc-build/releases/latest | grep -oE "tag/[0-9]+" | head -1 | cut -d/ -f2)
-		local FILE="eva-gcc-arm64-$VERSION.xz"
-		wget -q --show-progress "https://github.com/mvaisakh/gcc-build/releases/download/$VERSION/$FILE" -O "$TOOLCHAIN_DIR/$FILE"
-		tar -xf "$TOOLCHAIN_DIR/$FILE" -C "$TOOLCHAIN_DIR/EVA" --strip-components=1
-		rm -f "$TOOLCHAIN_DIR/$FILE"
-	}
+	setup_neutron_clang "$TOOLCHAIN_DIR" || return 1
 
-	echo -e "${GREEN}Latest toolchains are ready.${NC}"
+	echo -e "${GREEN}Neutron Clang is ready.${NC}"
 }
 
 # ---- Kernel compilation function ----
 compile_kernel() {
 	[ "$COMPILER_CHOICE" == "1" ] && CURRENT_COMPILER="EVA GCC"
-	[ "$COMPILER_CHOICE" == "2" ] && CURRENT_COMPILER="Sakura Clang"
-	[ "$COMPILER_CHOICE" != "1" ] && [ "$COMPILER_CHOICE" != "2" ] && CURRENT_COMPILER="Sakura Clang"
+	[ "$COMPILER_CHOICE" == "2" ] && CURRENT_COMPILER="Neutron Clang"
+	[ "$COMPILER_CHOICE" != "1" ] && [ "$COMPILER_CHOICE" != "2" ] && CURRENT_COMPILER="Neutron Clang"
 
 	CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 
@@ -858,11 +944,12 @@ compile_kernel() {
 
 	random_color
 	ascii_art_logo
-	setup_toolchains
+	setup_toolchains || return 1
 	clean
 	check_tools
 	clone_anykernel3
 	make_defconfig
+	prepare_ksu_headers || return 1
 	display_build_info
 	create_changelog
 	save_defconfig
@@ -879,7 +966,7 @@ compile_kernel() {
 	}
 }
 
-choose_action
+choose_action || exit $?
 
 echo -e "${GREEN}Done.${NC}"
 
