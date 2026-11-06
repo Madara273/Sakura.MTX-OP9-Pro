@@ -18,7 +18,6 @@ static u32 optional_ops[] = {
 	offsetof(struct tcp_congestion_ops, pkts_acked),
 	offsetof(struct tcp_congestion_ops, sndbuf_expand),
 	offsetof(struct tcp_congestion_ops, cong_control),
-	offsetof(struct netns_ipv4, sysctl_tcp_min_tso_segs),
 };
 
 static u32 unsupported_ops[] = {
