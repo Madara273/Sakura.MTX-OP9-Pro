@@ -1727,11 +1727,15 @@ static int write_incompressible_page(struct zram *zram, struct page *page,
 	struct zs_handle *handle;
 	void *src;
 
+	zram_slot_lock(zram, index);
+	zram_free_page(zram, index);
 	handle = zs_malloc(zram->mem_pool, PAGE_SIZE,
 			   GFP_NOIO | __GFP_NOWARN |
 			   __GFP_HIGHMEM | __GFP_MOVABLE);
-	if (IS_ERR(handle))
+	if (IS_ERR(handle)) {
+		zram_slot_unlock(zram, index);
 		return PTR_ERR(handle);
+	}
 
 	update_used_max(zram);
 
@@ -1739,8 +1743,6 @@ static int write_incompressible_page(struct zram *zram, struct page *page,
 	zs_obj_write(zram->mem_pool, handle, src, PAGE_SIZE);
 	kunmap_local(src);
 
-	zram_slot_lock(zram, index);
-	zram_free_page(zram, index);
 	zram_set_flag(zram, index, ZRAM_HUGE);
 	zram->table[index].handle = handle;
 	zram_set_obj_size(zram, index, PAGE_SIZE);
@@ -1791,12 +1793,15 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
 		return write_incompressible_page(zram, page, index);
 	}
 
+	zram_slot_lock(zram, index);
+	zram_free_page(zram, index);
 	handle = zs_malloc(zram->mem_pool, comp_len,
 			   GFP_NOIO | __GFP_NOWARN |
 			   __GFP_HIGHMEM | __GFP_MOVABLE | __GFP_CMA |
 			   __GFP_OFFLINABLE);
 	if (IS_ERR(handle)) {
 		zcomp_cstrm_put(zstrm);
+		zram_slot_unlock(zram, index);
 		return PTR_ERR(handle);
 	}
 
@@ -1805,8 +1810,6 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
 	zs_obj_write(zram->mem_pool, handle, zstrm->buffer, comp_len);
 	zcomp_cstrm_put(zstrm);
 
-	zram_slot_lock(zram, index);
-	zram_free_page(zram, index);
 	zram->table[index].handle = handle;
 	zram_set_obj_size(zram, index, comp_len);
 	zram_accessed(zram, index);
