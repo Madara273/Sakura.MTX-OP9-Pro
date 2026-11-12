@@ -29,7 +29,6 @@
 #include <hal_api.h>
 #include <hal_reo.h>
 #include <cdp_txrx_handle.h>
-#include <cdp_txrx_injection.h>
 #include <wlan_cfg.h>
 #ifdef FEATURE_WDS
 #include "dp_txrx_wds.h"
@@ -2218,8 +2217,6 @@ dp_rx_peer_map_handler(struct dp_soc *soc, uint16_t peer_id,
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
 	if (!is_wds && QDF_IS_STATUS_SUCCESS(err))
 		wma_injection_peer_map_complete(vdev_id, peer_mac_addr, peer_id);
-	if (peer && !is_wds)
-		wma_injection_peer_map_notify(vdev_id);
 #endif
 
 	return err;
