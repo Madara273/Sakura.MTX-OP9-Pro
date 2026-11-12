@@ -83,17 +83,8 @@
 #include <wlan_crypto_global_api.h>
 #include <wlan_mlme_main.h>
 #include "wlan_pkt_capture_ucfg_api.h"
-#include "wlan_mlme_api.h"
-#include "wlan_mlme_sta_mon.h"
-#include "wlan_osif_priv.h"
-#include "wlan_vdev_mgr_tgt_if_tx_api.h"
-#include "init_deinit_lmac.h"
-#include <linux/module.h>
-#include <../../core/src/vdev_mgr_ops.h>
 
 #ifdef FEATURE_FRAME_INJECTION_SUPPORT
-#include <asm/unaligned.h>
-#include <linux/ieee80211.h>
 #include <linux/atomic.h>
 #include <linux/bits.h>
 #include <linux/completion.h>
@@ -147,7 +138,6 @@ module_param_named(injection_dp_inflight_limit,
 MODULE_PARM_DESC(injection_dp_inflight_limit,
 		 "Maximum direct-DP frames awaiting completion (1-32)");
 
-/* Preserve the established default: all injected frames use WMI. */
 static bool wma_injection_direct_dp;
 module_param_named(injection_direct_dp, wma_injection_direct_dp, bool, 0644);
 MODULE_PARM_DESC(injection_direct_dp,
@@ -155,10 +145,6 @@ MODULE_PARM_DESC(injection_direct_dp,
 
 struct wma_injection_slot {
 	qdf_nbuf_t nbuf;
-	struct cdp_tx_injection_params params;
-	u64 generation;
-	u8 monitor_vdev_id;
-	s32 completion_status;
 	u16 desc_id;
 	unsigned long submitted;
 	enum wma_injection_slot_state state;
@@ -167,72 +153,7 @@ struct wma_injection_slot {
 	u8 frame_control;
 };
 
-/* WMA owns skb->cb while queued; reset it before handing the skb to QDF/DP. */
-struct wma_injection_cb {
-	u64 generation;
-	struct cdp_tx_injection_params params;
-	uint8_t monitor_vdev_id;
-};
-
-static atomic64_t injection_accepted = ATOMIC64_INIT(0);
-static atomic64_t injection_submitted = ATOMIC64_INIT(0);
-static atomic64_t injection_eapol_submitted = ATOMIC64_INIT(0);
-static atomic64_t injection_data_submitted = ATOMIC64_INIT(0);
-static atomic64_t injection_control_submitted = ATOMIC64_INIT(0);
-static atomic64_t injection_send_failed = ATOMIC64_INIT(0);
-static atomic64_t injection_completed = ATOMIC64_INIT(0);
-static atomic64_t injection_completion_failed = ATOMIC64_INIT(0);
-static atomic64_t injection_completion_unknown = ATOMIC64_INIT(0);
-static atomic64_t injection_timed_out = ATOMIC64_INIT(0);
-
-static int wma_injection_stats_get(char *buffer, const struct kernel_param *kp)
-{
-	return scnprintf(buffer, PAGE_SIZE,
-		"accepted=%lld submitted=%lld data=%lld eapol=%lld control=%lld send_failed=%lld completed=%lld completion_failed=%lld completion_unknown=%lld timed_out=%lld\n",
-		atomic64_read(&injection_accepted),
-		atomic64_read(&injection_submitted),
-		atomic64_read(&injection_data_submitted),
-		atomic64_read(&injection_eapol_submitted),
-		atomic64_read(&injection_control_submitted),
-		atomic64_read(&injection_send_failed),
-		atomic64_read(&injection_completed),
-		atomic64_read(&injection_completion_failed),
-		atomic64_read(&injection_completion_unknown),
-		atomic64_read(&injection_timed_out));
-}
-
-static const struct kernel_param_ops wma_injection_stats_ops = {
-	.get = wma_injection_stats_get,
-};
-module_param_cb(injection_stats, &wma_injection_stats_ops, NULL, 0444);
-MODULE_PARM_DESC(injection_stats, "Monitor TX counters; submitted is not an RF receipt");
-
 struct wma_injection_helper {
-	/* Private native owner; none of these fields changes an exported ABI. */
-	struct wlan_objmgr_vdev *vdev;
-	struct vdev_start_params start;
-	struct reg_tpc_power_info power;
-	struct wlan_objmgr_vdev *power_owner;
-	uint64_t power_revision;
-	uint8_t power_owner_id;
-	bool power_programmed;
-	struct completion start_done;
-	struct completion stop_done;
-	struct completion delete_done;
-	uint64_t coex_generation;
-	QDF_STATUS create_status;
-	QDF_STATUS start_status;
-	QDF_STATUS stop_status;
-	QDF_STATUS delete_status;
-	uint8_t expected_mac_id;
-	bool native;
-	bool start_requested;
-	bool stop_requested;
-	bool delete_requested;
-	bool delete_sent;
-	bool delete_confirmed;
-	bool rx_bound;
-
 	bool created;
 	bool wmi_created;
 	bool wmi_start_pending;
@@ -246,7 +167,6 @@ struct wma_injection_helper {
 	u8 monitor_vdev_id;
 	u16 peer_id;
 	u32 chanfreq;
-	u8 interface_mac[QDF_MAC_ADDR_SIZE];
 	u8 mac_addr[QDF_MAC_ADDR_SIZE];
 	u8 peer_addr[QDF_MAC_ADDR_SIZE];
 	u32 generation;
@@ -293,8 +213,6 @@ static struct {
 	u32 next_generation;
 	enum wma_injection_state state;
 	bool initialized;
-	bool coex_resume_ready;
-	wait_queue_head_t peer_map_wait;
 	bool success_logged;
 	u8 channel_change_vdev_id;
 	u32 channel_change_freq;
@@ -303,848 +221,10 @@ static struct {
 	unsigned long channel_hold_until;
 } wma_injection_ctx;
 
-struct wma_injection_power_entry {
-	/* Identity only; every dereference uses the caller's live vdev reference. */
-	struct wlan_objmgr_vdev *owner;
-	struct reg_tpc_power_info power;
-	struct wlan_channel channel;
-	uint64_t revision;
-	uint64_t ticket;
-	unsigned int pending;
-	bool valid;
-	bool conflict;
-	bool overridden;
-};
-
-/* Permanent lock: regulatory callbacks can precede WMA injection init. */
-static DEFINE_SPINLOCK(wma_injection_power_lock);
-static struct wma_injection_power_state {
-	struct wlan_objmgr_psoc *psoc;
-	uint64_t serial;
-	uint64_t epoch;
-	unsigned int reg_updates;
-	struct wma_injection_power_entry entry[WLAN_UMAC_PSOC_MAX_VDEVS];
-} wma_injection_power;
-
-static void wma_injection_power_init(struct wlan_objmgr_psoc *psoc)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	qdf_mem_zero(wma_injection_power.entry,
-		     sizeof(wma_injection_power.entry));
-	wma_injection_power.psoc = psoc;
-	wma_injection_power.reg_updates = 0;
-	/* Never reuse a pre-reset send ticket, even when a psoc address repeats. */
-	wma_injection_power.epoch = ++wma_injection_power.serial;
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-}
-
-static void
-wma_injection_power_invalidate(struct wma_injection_power_entry *entry)
-{
-	entry->valid = false;
-	entry->revision = ++wma_injection_power.serial;
-	if (entry->pending)
-		entry->conflict = true;
-}
-
-void wma_injection_power_set_owner(struct wlan_objmgr_vdev *vdev, bool attached)
-{
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(vdev);
-	uint8_t id = wlan_vdev_get_id(vdev);
-	struct wma_injection_power_entry *entry;
-	unsigned long flags;
-
-	if (id >= WLAN_UMAC_PSOC_MAX_VDEVS)
-		return;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	if (wma_injection_power.psoc == psoc) {
-		entry = &wma_injection_power.entry[id];
-		if (entry->owner)
-			wlan_mlme_sta_mon_power_changed(psoc, id);
-		wma_injection_power_invalidate(entry);
-		entry->owner = attached &&
-			(wlan_vdev_mlme_get_opmode(vdev) == QDF_STA_MODE ||
-			 wlan_vdev_mlme_get_opmode(vdev) == QDF_MONITOR_MODE ||
-			 (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE &&
-			  !wlan_vdev_is_injection_helper(vdev))) ?
-			vdev : NULL;
-		entry->overridden = false;
-	}
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-}
-
-void wma_injection_power_reset(struct wlan_objmgr_vdev *vdev)
-{
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(vdev);
-	uint8_t id = wlan_vdev_get_id(vdev);
-	struct wma_injection_power_entry *entry;
-	unsigned long flags;
-
-	if (id >= WLAN_UMAC_PSOC_MAX_VDEVS)
-		return;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	entry = &wma_injection_power.entry[id];
-	if (wma_injection_power.psoc == psoc && entry->owner == vdev) {
-		wma_injection_power_invalidate(entry);
-		wlan_mlme_sta_mon_power_changed(psoc, id);
-	}
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-}
-
-void wma_injection_power_override(uint8_t id)
-{
-	struct wma_injection_power_entry *entry;
-	unsigned long flags;
-
-	if (id >= WLAN_UMAC_PSOC_MAX_VDEVS)
-		return;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	entry = &wma_injection_power.entry[id];
-	if (wma_injection_power.psoc && entry->owner) {
-		/* Scalar/scale limits are not represented in the effective TPC table.
-		 * Keep admission closed until this native vdev lifetime ends, even
-		 * after a failed command, START or a later successful TPC update.
-		 */
-		entry->overridden = true;
-		wma_injection_power_invalidate(entry);
-		wlan_mlme_sta_mon_invalidate(wma_injection_power.psoc, id);
-	}
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-}
-
-/* Compare only fields used by the non-PSD WMI command, not padding/TPE inputs. */
-static bool wma_injection_power_equal(const struct reg_tpc_power_info *a,
-				      const struct reg_tpc_power_info *b)
-{
-	unsigned int i;
-
-	if (a->is_psd_power || b->is_psd_power ||
-
-	    a->power_type_6g || b->power_type_6g ||
-	    a->eirp_power != b->eirp_power ||
-	    a->num_pwr_levels != b->num_pwr_levels ||
-	    !a->num_pwr_levels || a->num_pwr_levels > MAX_NUM_PWR_LEVEL)
-		return false;
-	for (i = 0; i < a->num_pwr_levels; i++)
-		if (a->chan_power_info[i].chan_cfreq !=
-		    b->chan_power_info[i].chan_cfreq ||
-		    a->chan_power_info[i].tx_power != b->chan_power_info[i].tx_power)
-			return false;
-	return true;
-}
-
-uint64_t wma_injection_tpc_begin(struct wlan_objmgr_vdev *vdev,
-				const struct reg_tpc_power_info *power)
-{
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(vdev);
-	struct wlan_channel *channel = wlan_vdev_mlme_get_bss_chan(vdev);
-	uint8_t id = wlan_vdev_get_id(vdev);
-	struct wma_injection_power_entry *entry;
-	uint64_t ticket = 0;
-	unsigned long flags;
-
-	if (id >= WLAN_UMAC_PSOC_MAX_VDEVS || !channel)
-		return 0;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	entry = &wma_injection_power.entry[id];
-	if (wma_injection_power.psoc != psoc || entry->owner != vdev)
-		goto out;
-	if (!entry->pending) {
-		entry->ticket = ++wma_injection_power.serial;
-		entry->conflict = !!wma_injection_power.reg_updates;
-		if (!entry->valid || entry->overridden || entry->conflict ||
-		    qdf_mem_cmp(&entry->channel, channel, sizeof(*channel)) ||
-		    !wma_injection_power_equal(&entry->power, power)) {
-			wma_injection_power_invalidate(entry);
-			/* Gate descriptor publication before changed limits reach FW. */
-			wlan_mlme_sta_mon_power_changed(psoc, id);
-		}
-		qdf_mem_copy(&entry->power, power, sizeof(*power));
-		qdf_mem_copy(&entry->channel, channel, sizeof(*channel));
-	} else {
-		/* Completions do not prove ordering of overlapping WMI sends.
-		 * Reject the entire batch until every outstanding sender drains.
-		 */
-		wma_injection_power_invalidate(entry);
-		wlan_mlme_sta_mon_power_changed(psoc, id);
-	}
-	entry->pending++;
-	ticket = entry->ticket;
-out:
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-	return ticket;
-}
-
-void wma_injection_tpc_end(struct wlan_objmgr_vdev *vdev, uint64_t ticket,
-			   QDF_STATUS status)
-{
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(vdev);
-	uint8_t id = wlan_vdev_get_id(vdev);
-	struct wma_injection_power_entry *entry;
-	unsigned long flags;
-
-	if (!ticket || id >= WLAN_UMAC_PSOC_MAX_VDEVS)
-		return;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	entry = &wma_injection_power.entry[id];
-	if (wma_injection_power.psoc != psoc || ticket != entry->ticket ||
-	    !entry->pending)
-		goto out;
-	entry->pending--;
-	if (QDF_IS_STATUS_ERROR(status) || entry->owner != vdev ||
-	    wma_injection_power.reg_updates || entry->overridden || entry->conflict) {
-		wma_injection_power_invalidate(entry);
-		wlan_mlme_sta_mon_power_changed(psoc, id);
-	} else if (!entry->pending) {
-		entry->valid = true;
-	}
-out:
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-}
-
-uint64_t wma_injection_reg_begin(struct wlan_objmgr_pdev *pdev)
-{
-	struct wlan_objmgr_psoc *psoc = wlan_pdev_get_psoc(pdev);
-	unsigned long flags;
-	uint64_t ticket = 0;
-	unsigned int i;
-
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	if (wma_injection_power.psoc == psoc) {
-		wma_injection_power.reg_updates++;
-		for (i = 0; i < WLAN_UMAC_PSOC_MAX_VDEVS; i++)
-			wma_injection_power_invalidate(&wma_injection_power.entry[i]);
-		wlan_mlme_sta_mon_update_begin(psoc);
-		ticket = wma_injection_power.epoch;
-	}
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-	return ticket;
-}
-
-void wma_injection_reg_end(struct wlan_objmgr_pdev *pdev, uint64_t ticket)
-{
-	struct wlan_objmgr_psoc *psoc = wlan_pdev_get_psoc(pdev);
-	unsigned long flags;
-	unsigned int i;
-
-	if (!ticket)
-		return;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	if (wma_injection_power.psoc == psoc) {
-		if (ticket != wma_injection_power.epoch) {
-			/* WMA can reset before this worker drains, retaining the
-			 * same psoc. Reject new-epoch TPC captured during old work.
-			 */
-			for (i = 0; i < WLAN_UMAC_PSOC_MAX_VDEVS; i++)
-				wma_injection_power_invalidate(
-					&wma_injection_power.entry[i]);
-		} else if (wma_injection_power.reg_updates) {
-			wma_injection_power.reg_updates--;
-		}
-	}
-	/* The pdev reference outlives this computation. Balance its MLME gate
-	 * even when detach/reinit has replaced the private cache's epoch.
-	 */
-	wlan_mlme_sta_mon_update_end(psoc);
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-}
-
-/* Only complete, non-PSD 20/40/80 MHz tables in 2.4/5 GHz are supported.
- * PE uses primary frequency without TPE and per-bandwidth centers with TPE.
- */
-static bool
-wma_injection_power_layout(const struct reg_tpc_power_info *power,
-			   const struct wlan_channel *channel, int16_t *limit)
-{
-	uint32_t width, first, primary, center, bw;
-	unsigned int levels, i;
-	bool primary_layout = true, center_layout = true;
-
-	if ((!wlan_reg_is_24ghz_ch_freq(channel->ch_freq) &&
-	     !wlan_reg_is_5ghz_ch_freq(channel->ch_freq)) ||
-	    power->is_psd_power ||
-	    power->power_type_6g || channel->ch_cfreq2)
-		return false;
-#ifdef WLAN_FEATURE_11BE
-	if (channel->puncture_bitmap)
-		return false;
-#endif
-	switch (channel->ch_width) {
-	case CH_WIDTH_20MHZ:
-		width = 20;
-		levels = 1;
-		break;
-	case CH_WIDTH_40MHZ:
-		width = 40;
-		levels = 2;
-		break;
-	case CH_WIDTH_80MHZ:
-		width = 80;
-		levels = 3;
-		break;
-	default:
-		return false;
-	}
-	if (power->num_pwr_levels != levels ||
-	    channel->ch_cfreq1 < width / 2 - 10)
-		return false;
-	first = channel->ch_cfreq1 - width / 2 + 10;
-	if (channel->ch_freq < first || channel->ch_freq >= first + width ||
-	    (channel->ch_freq - first) % 20)
-		return false;
-	primary = (channel->ch_freq - first) / 20;
-	*limit = 127;
-	for (i = 0, bw = 20; i < levels; i++, bw *= 2) {
-		int16_t pwr = power->chan_power_info[i].tx_power;
-		uint32_t freq = power->chan_power_info[i].chan_cfreq;
-
-		/* Do not reinterpret PE's unsigned-wrapped negative limits. */
-		if (pwr < -128 || pwr > 127)
-			return false;
-		center = first + (primary / (bw / 20)) * bw + bw / 2 - 10;
-		primary_layout &= freq == channel->ch_freq;
-		center_layout &= freq == center;
-		*limit = QDF_MIN(*limit, pwr);
-	}
-	return primary_layout || center_layout;
-}
-
-static bool
-wma_injection_native_power_valid(struct wma_injection_helper *helper)
-{
-	struct wma_injection_power_entry *entry;
-	unsigned long flags;
-	bool valid;
-
-	if (!helper->vdev || !helper->power_owner ||
-	    helper->power_owner_id >= WLAN_UMAC_PSOC_MAX_VDEVS)
-		return false;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	entry = &wma_injection_power.entry[helper->power_owner_id];
-	valid = wma_injection_power.psoc == wlan_vdev_get_psoc(helper->vdev) &&
-		!wma_injection_power.reg_updates && !entry->pending &&
-		entry->valid && !entry->overridden &&
-		entry->owner == helper->power_owner &&
-		entry->revision == helper->power_revision;
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-	return valid;
-}
-
-static bool wma_injection_power_channel_allowed(enum channel_state state,
-					       bool require_enabled)
-{
-	if (require_enabled)
-		return state == CHANNEL_STATE_ENABLE;
-	/* Only a connected STA can lend its subordinate DFS/passive permission.
-	 * AP-owned and exclusive injection require an actively enabled channel.
-	 */
-	return state == CHANNEL_STATE_ENABLE || state == CHANNEL_STATE_DFS ||
-		state == CHANNEL_STATE_PASSIVE;
-}
-
-static QDF_STATUS
-wma_injection_native_power(tp_wma_handle wma, struct wma_injection_helper *helper,
-			   struct wlan_objmgr_vdev *sta,
-			   const struct wlan_channel *channel, bool require_enabled,
-			   int8_t *start_limit)
-{
-	uint8_t id = wlan_vdev_get_id(sta);
-	struct wma_injection_power_entry *entry;
-	unsigned long flags;
-	int16_t limit;
-	uint8_t reg_power;
-	uint32_t width, first, freq, secondary = 0;
-	enum channel_state state;
-	unsigned int i;
-	QDF_STATUS status = QDF_STATUS_E_NOSUPPORT;
-
-	if (id >= WLAN_UMAC_PSOC_MAX_VDEVS ||
-	    !wlan_reg_is_ext_tpc_supported(wma->psoc))
-		return status;
-	spin_lock_irqsave(&wma_injection_power_lock, flags);
-	entry = &wma_injection_power.entry[id];
-	if (wma_injection_power.psoc != wma->psoc ||
-	    wma_injection_power.reg_updates || entry->pending ||
-	    !entry->valid || entry->overridden || entry->owner != sta ||
-	    qdf_mem_cmp(&entry->channel, channel, sizeof(*channel)) ||
-	    !wma_injection_power_layout(&entry->power, channel, &limit))
-		goto out;
-	width = 20U << (entry->power.num_pwr_levels - 1);
-	first = channel->ch_cfreq1 - width / 2 + 10;
-	/* The begin/end regulatory gate protects these current-list reads. */
-	if (width == 40 && wlan_reg_is_24ghz_ch_freq(channel->ch_freq))
-		secondary = 2 * channel->ch_cfreq1 - channel->ch_freq;
-	state = wlan_reg_get_bonded_channel_state_for_freq(
-		wma->pdev, channel->ch_freq, channel->ch_width, secondary);
-	if (!wma_injection_power_channel_allowed(state, require_enabled))
-		goto out;
-	for (freq = first; freq < first + width; freq += 20) {
-		state = wlan_reg_get_bonded_channel_state_for_freq(
-			wma->pdev, freq, CH_WIDTH_20MHZ, 0);
-		if (!wma_injection_power_channel_allowed(state, require_enabled))
-			goto out;
-		reg_power = wlan_reg_get_channel_reg_power_for_freq(wma->pdev, freq);
-		if (reg_power == REG_INVALID_TXPOWER || reg_power > 127)
-			goto out;
-		limit = QDF_MIN(limit, reg_power);
-	}
-	qdf_mem_copy(&helper->power, &entry->power, sizeof(helper->power));
-	/* A uniform lower ceiling is conservative for every supported bandwidth. */
-	for (i = 0; i < helper->power.num_pwr_levels; i++)
-		helper->power.chan_power_info[i].tx_power = limit;
-	helper->power.eirp_power = QDF_MIN(helper->power.eirp_power, limit);
-	helper->power_owner = sta;
-	helper->power_owner_id = id;
-	helper->power_revision = entry->revision;
-	*start_limit = limit;
-	status = QDF_STATUS_SUCCESS;
-out:
-	spin_unlock_irqrestore(&wma_injection_power_lock, flags);
-	return status;
-}
-
 static void wma_injection_work(struct work_struct *work);
 static void wma_injection_retry_work(struct work_struct *work);
 static void wma_injection_helper_idle_work(struct work_struct *work);
 static void wma_injection_reaper(struct work_struct *work);
-static bool wma_injection_wait_for_idle(void);
-
-static bool __wma_injection_destroy_helper(tp_wma_handle wma);
-static unsigned int wma_injection_pending_count_locked(void);
-static bool wma_injection_coex_token(void *arg, uint8_t monitor_vdev_id,
-				     uint64_t generation)
-{
-	return wlan_mlme_sta_mon_token_valid(arg, monitor_vdev_id, generation);
-}
-
-static bool wma_injection_native_valid(struct wma_injection_helper *helper)
-{
-	return helper->native && helper->vdev &&
-		!wlan_vdev_injection_fw_uncertain(helper->vdev) &&
-		wlan_mlme_sta_mon_token_valid(
-			wlan_vdev_get_psoc(helper->vdev),
-			helper->monitor_vdev_id, helper->coex_generation);
-}
-
-QDF_STATUS wma_injection_helper_attach_vdev(struct wlan_objmgr_vdev *vdev)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	if (!helper->native || helper->vdev ||
-	    !wlan_mlme_sta_mon_token_valid(wlan_vdev_get_psoc(vdev),
-					  helper->monitor_vdev_id,
-					  helper->coex_generation))
-		return QDF_STATUS_E_AGAIN;
-
-	/* This ref reserves the objmgr ID through the actual DELETE response. */
-	wlan_objmgr_vdev_get_ref(vdev, WLAN_LEGACY_SME_ID);
-	helper->vdev_id = wlan_vdev_get_id(vdev);
-	WRITE_ONCE(helper->vdev, vdev);
-	return QDF_STATUS_SUCCESS;
-}
-
-void wma_injection_helper_create_result(struct wlan_objmgr_vdev *vdev,
-					QDF_STATUS status)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	if (helper->native && helper->vdev == vdev)
-		helper->create_status = status;
-}
-
-bool wma_injection_helper_has_self_peer(struct wlan_objmgr_vdev *vdev)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	return helper->native && helper->vdev == vdev &&
-		helper->fw_peer_created;
-}
-
-void wma_injection_helper_peer_created(uint8_t vdev_id)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	/* Record the accepted FW command even if later host peer setup fails. */
-	if (helper->native && helper->vdev_id == vdev_id)
-		helper->fw_peer_created = true;
-}
-
-bool wma_injection_helper_self_peer_deleted(struct wlan_objmgr_vdev *vdev,
-					   QDF_STATUS status)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct vdev_mlme_obj *mlme;
-
-	if (!wlan_vdev_is_injection_helper(vdev))
-		return false;
-	if (!helper->native || helper->vdev != vdev)
-		return true;
-	if (QDF_IS_STATUS_ERROR(status) ||
-	    wlan_vdev_injection_fw_uncertain(vdev)) {
-		helper->delete_status = QDF_STATUS_E_FAILURE;
-		complete_all(&helper->delete_done);
-		return true;
-	}
-	helper->fw_peer_created = false;
-	mlme = wlan_vdev_mlme_get_cmpt_obj(vdev);
-	if (!mlme || helper->delete_sent) {
-		helper->delete_status = QDF_STATUS_E_FAILURE;
-		complete_all(&helper->delete_done);
-		return true;
-	}
-	/* Native target timers own the response; no delay substitutes for it. */
-	helper->delete_sent = true;
-	status = vdev_mgr_delete_send(mlme);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		helper->delete_status = status;
-		complete_all(&helper->delete_done);
-	}
-	return true;
-}
-
-QDF_STATUS wma_injection_helper_delete_no_peer(struct wlan_objmgr_vdev *vdev)
-{
-	tp_wma_handle wma = wma_injection_ctx.wma;
-
-	if (wma && wma->interfaces[wlan_vdev_get_id(vdev)].vdev == vdev)
-		wma_cleanup_vdev(vdev);
-	wma_injection_helper_self_peer_deleted(vdev, QDF_STATUS_SUCCESS);
-	return QDF_STATUS_SUCCESS;
-}
-
-bool wma_injection_helper_deleted(uint8_t vdev_id)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct wlan_objmgr_vdev *vdev;
-
-	if (!helper->native || helper->vdev_id != vdev_id)
-		return false;
-	vdev = READ_ONCE(helper->vdev);
-	if (!vdev || !helper->delete_sent ||
-	    wlan_vdev_injection_fw_uncertain(vdev)) {
-		helper->delete_status = QDF_STATUS_E_FAILURE;
-		complete_all(&helper->delete_done);
-		return true;
-	}
-	/* MLME destruction skips a second FW DELETE for this private owner. */
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_SME_ID);
-	WRITE_ONCE(helper->vdev, NULL);
-	helper->delete_status = QDF_STATUS_SUCCESS;
-	helper->delete_confirmed = true;
-	complete_all(&helper->delete_done);
-	return true;
-}
-
-void wma_injection_peer_map_notify(uint8_t vdev_id)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	if (READ_ONCE(helper->native) && READ_ONCE(helper->vdev_id) == vdev_id)
-		wake_up_all(&wma_injection_ctx.peer_map_wait);
-}
-
-bool wma_injection_coex_is_quiesced(void)
-{
-	return !READ_ONCE(wma_injection_ctx.helper.native) &&
-		!READ_ONCE(wma_injection_ctx.in_flight);
-}
-
-QDF_STATUS wma_injection_coex_resource_check(uint8_t additional_vdevs)
-{
-	tp_wma_handle wma = cds_get_context(QDF_MODULE_ID_WMA);
-	struct wlan_objmgr_psoc_objmgr *objmgr;
-	struct wlan_objmgr_vdev *vdev;
-	target_resource_config *cfg;
-	uint32_t limit, peer_limit, count, peers, beacons = 0, free_ids = 0;
-	uint16_t id;
-	bool available;
-
-	if (!additional_vdevs || additional_vdevs > 2)
-		return QDF_STATUS_E_INVAL;
-	if (!wma || !wma->psoc || !wma->wmi_handle ||
-	    cds_is_fw_down() || cds_is_driver_recovering())
-		return QDF_STATUS_E_AGAIN;
-	cfg = lmac_get_tgt_res_cfg(wma->psoc);
-	if (!cfg || !cfg->num_vdevs || !cfg->num_peers ||
-	    !cfg->beacon_tx_offload_max_vdev ||
-	    !wmi_service_enabled(wma->wmi_handle, wmi_service_sync_delete_cmds) ||
-	    (!wmi_service_enabled(wma->wmi_handle,
-		wmi_service_dual_beacon_on_single_mac_scc_support) &&
-	     !wmi_service_enabled(wma->wmi_handle,
-		wmi_service_dual_beacon_on_single_mac_mcc_support)))
-		return QDF_STATUS_E_NOSUPPORT;
-
-	/* num_vdevs already reflects any firmware-owned NAN reservation.
-	 * Count allocated objects, including down and deleting interfaces, not
-	 * just connected roles. No firmware command is sent by this preflight.
-	 */
-	wlan_psoc_obj_lock(wma->psoc);
-	objmgr = &wma->psoc->soc_objmgr;
-	limit = qdf_min(cfg->num_vdevs,
-		qdf_min((uint32_t)objmgr->max_vdev_count,
-			(uint32_t)wma->max_bssid));
-	limit = qdf_min(limit, (uint32_t)WLAN_UMAC_PSOC_MAX_VDEVS);
-	peer_limit = qdf_min(cfg->num_peers, (uint32_t)objmgr->max_peer_count);
-	count = objmgr->wlan_vdev_count;
-	peers = objmgr->wlan_peer_count;
-	for (id = 0; id < WLAN_UMAC_PSOC_MAX_VDEVS; id++) {
-		if (id < limit && !qdf_test_bit(id, objmgr->wlan_vdev_id_map))
-			free_ids++;
-		vdev = objmgr->wlan_vdev_list[id];
-		if (vdev && (wlan_vdev_mlme_get_opmode(vdev) == QDF_SAP_MODE ||
-			     wlan_vdev_mlme_get_opmode(vdev) == QDF_P2P_GO_MODE))
-			beacons++;
-	}
-	/* A monitor may need a native self peer on some target layouts.
-	 * Account for one per new vdev, including the private SAP helper.
-	 */
-	available = free_ids >= additional_vdevs &&
-		count + additional_vdevs <= limit &&
-		peers + additional_vdevs <= peer_limit &&
-		beacons < cfg->beacon_tx_offload_max_vdev;
-	wlan_psoc_obj_unlock(wma->psoc);
-	if (!available) {
-		wma_err_rl("STA/AP monitor capacity: vdevs %u+%u/%u peers %u+%u/%u beacon vdevs %u+1/%u",
-			   count, additional_vdevs, limit, peers, additional_vdevs,
-			   peer_limit, beacons, cfg->beacon_tx_offload_max_vdev);
-		return QDF_STATUS_E_BUSY;
-	}
-	return QDF_STATUS_SUCCESS;
-}
-
-bool wma_injection_handoff_is_quiesced(void)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	unsigned long flags;
-	bool quiesced;
-
-	if (!READ_ONCE(wma_injection_ctx.initialized))
-		return false;
-	mutex_lock(&wma_injection_ctx.lifecycle_lock);
-	mutex_lock(&wma_injection_ctx.helper_lock);
-	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	quiesced = wma_injection_ctx.initialized && wma_injection_ctx.wma &&
-		(wma_injection_ctx.state == WMA_INJECTION_STOPPING) && wma_injection_ctx.coex_resume_ready &&
-		!wma_injection_ctx.channel_change_freq &&
-		!wma_injection_ctx.in_flight &&
-		!atomic_read_acquire(&wma_injection_ctx.refill_busy) &&
-		!wma_injection_pending_count_locked() &&
-		!helper->native && !helper->created && !helper->wmi_created &&
-		!helper->dp_attached;
-	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-	mutex_unlock(&wma_injection_ctx.helper_lock);
-	mutex_unlock(&wma_injection_ctx.lifecycle_lock);
-	return quiesced;
-}
-
-QDF_STATUS wma_injection_helper_start_send(struct vdev_mlme_obj *mlme,
-					   uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	QDF_STATUS status;
-
-	if (helper->vdev != mlme->vdev || !wma_injection_native_valid(helper) ||
-	    !wma_injection_native_power_valid(helper))
-		status = QDF_STATUS_E_AGAIN;
-	else
-		status = tgt_vdev_mgr_start_send(mlme, &helper->start);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		helper->start_status = status;
-		complete_all(&helper->start_done);
-		wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					      WLAN_VDEV_SM_EV_START_REQ_FAIL,
-					      0, NULL);
-	}
-	return status;
-}
-
-QDF_STATUS wma_injection_helper_start_rsp(struct vdev_mlme_obj *mlme,
-					  struct vdev_start_response *rsp)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	tp_wma_handle wma = wma_injection_ctx.wma;
-	target_resource_config *res;
-	uint32_t mac_id;
-
-	if (helper->vdev != mlme->vdev || rsp->vdev_id != helper->vdev_id)
-		return QDF_STATUS_E_INVAL;
-	if (rsp->status != QDF_STATUS_SUCCESS ||
-	    wlan_vdev_injection_fw_uncertain(mlme->vdev)) {
-		helper->start_status = QDF_STATUS_E_FAILURE;
-		complete_all(&helper->start_done);
-		if (!wlan_vdev_injection_fw_uncertain(mlme->vdev))
-			wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-						      WLAN_VDEV_SM_EV_START_REQ_FAIL,
-						      0, NULL);
-		return QDF_STATUS_E_FAILURE;
-	}
-	helper->wmi_started = true;
-	res = lmac_get_tgt_res_cfg(wma->psoc);
-	mac_id = !res ? MAX_MAC : res->use_pdev_id ?
-		 WMA_PDEV_TO_MAC_MAP(rsp->mac_id) : rsp->mac_id;
-	helper->start_status = mac_id < MAX_MAC &&
-		mac_id == helper->expected_mac_id ?
-		QDF_STATUS_SUCCESS : QDF_STATUS_E_INVAL;
-	if (QDF_IS_STATUS_SUCCESS(helper->start_status)) {
-		qdf_mem_copy(wlan_vdev_mlme_get_bss_chan(mlme->vdev),
-			     wlan_vdev_mlme_get_des_chan(mlme->vdev),
-			     sizeof(struct wlan_channel));
-		wma->interfaces[helper->vdev_id].ch_freq = helper->chanfreq;
-		wma->interfaces[helper->vdev_id].tx_streams = rsp->cfgd_tx_streams;
-		wma->interfaces[helper->vdev_id].mac_id = mac_id;
-		cdp_update_mac_id(wlan_psoc_get_dp_handle(wma->psoc),
-				 helper->vdev_id, mac_id);
-	}
-	return wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					    WLAN_VDEV_SM_EV_START_RESP, 0, NULL);
-}
-
-QDF_STATUS wma_injection_helper_start_continue(struct vdev_mlme_obj *mlme,
-					       uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct wlan_lmac_if_reg_tx_ops *tx_ops;
-	QDF_STATUS status = QDF_STATUS_E_AGAIN;
-
-	if (QDF_IS_STATUS_ERROR(helper->start_status) ||
-	    !wma_injection_native_valid(helper) ||
-	    !wma_injection_native_power_valid(helper))
-		goto fail;
-	tx_ops = wlan_reg_get_tx_ops(wlan_vdev_get_psoc(mlme->vdev));
-	if (!tx_ops || !tx_ops->set_tpc_power) {
-		status = QDF_STATUS_E_NOSUPPORT;
-		goto fail;
-	}
-	/* No PE session exists for this private vdev: program its own TPC table
-	 * explicitly after START and before UP can make it ready for raw TX.
-	 */
-	status = tx_ops->set_tpc_power(wlan_vdev_get_psoc(mlme->vdev),
-				     helper->vdev_id, &helper->power);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	if (!wma_injection_native_valid(helper) ||
-	    !wma_injection_native_power_valid(helper)) {
-		status = QDF_STATUS_E_AGAIN;
-		goto fail;
-	}
-	helper->power_programmed = true;
-	return wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					    WLAN_VDEV_SM_EV_START_SUCCESS, 0, NULL);
-fail:
-	helper->start_status = status;
-	complete_all(&helper->start_done);
-	return status;
-}
-
-QDF_STATUS wma_injection_helper_up_send(struct vdev_mlme_obj *mlme,
-					uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct vdev_up_params up = { .vdev_id = helper->vdev_id };
-	QDF_STATUS status;
-
-	if (!wma_injection_native_valid(helper) || !helper->power_programmed ||
-	    !wma_injection_native_power_valid(helper))
-		status = QDF_STATUS_E_AGAIN;
-	else
-		status = tgt_vdev_mgr_up_send(mlme, &up);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		helper->start_status = status;
-		complete_all(&helper->start_done);
-	} else {
-		helper->wmi_up = true;
-	}
-	return status;
-}
-
-QDF_STATUS wma_injection_helper_notify_up(struct vdev_mlme_obj *mlme,
-					  uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	helper->start_status = QDF_STATUS_SUCCESS;
-	complete_all(&helper->start_done);
-	return QDF_STATUS_SUCCESS;
-}
-
-QDF_STATUS wma_injection_helper_disconnect(struct vdev_mlme_obj *mlme,
-					   uint16_t data_len, void *data,
-					   bool legacy_only)
-{
-	return wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					    WLAN_VDEV_SM_EV_DISCONNECT_COMPLETE,
-					    0, NULL);
-}
-
-QDF_STATUS wma_injection_helper_stop_send(struct vdev_mlme_obj *mlme,
-					  uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct vdev_stop_params stop = { .vdev_id = helper->vdev_id };
-	QDF_STATUS status;
-
-	helper->stop_requested = true;
-	status = tgt_vdev_mgr_stop_send(mlme, &stop);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		helper->stop_status = status;
-		complete_all(&helper->stop_done);
-	}
-	return status;
-}
-
-QDF_STATUS wma_injection_helper_stop_rsp(struct vdev_mlme_obj *mlme,
-					 struct vdev_stop_response *rsp)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	if (helper->vdev != mlme->vdev ||
-	    wlan_vdev_injection_fw_uncertain(mlme->vdev)) {
-		helper->stop_status = QDF_STATUS_E_FAILURE;
-		complete_all(&helper->stop_done);
-		return QDF_STATUS_E_FAILURE;
-	}
-	helper->wmi_started = false;
-	return wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					    WLAN_VDEV_SM_EV_STOP_RESP, 0, NULL);
-}
-
-QDF_STATUS wma_injection_helper_stop_continue(struct vdev_mlme_obj *mlme,
-					      uint16_t data_len, void *data)
-{
-	return wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					    WLAN_VDEV_SM_EV_MLME_DOWN_REQ, 0, NULL);
-}
-
-QDF_STATUS wma_injection_helper_down_send(struct vdev_mlme_obj *mlme,
-					  uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct vdev_down_params down = { .vdev_id = helper->vdev_id };
-	QDF_STATUS status;
-
-	status = tgt_vdev_mgr_down_send(mlme, &down);
-	helper->stop_status = status;
-	if (QDF_IS_STATUS_ERROR(status)) {
-		complete_all(&helper->stop_done);
-		return status;
-	}
-	helper->wmi_up = false;
-	return wlan_vdev_mlme_sm_deliver_evt(mlme->vdev,
-					    WLAN_VDEV_SM_EV_DOWN_COMPLETE, 0, NULL);
-}
-
-QDF_STATUS wma_injection_helper_notify_down(struct vdev_mlme_obj *mlme,
-					    uint16_t data_len, void *data)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-
-	if (!helper->wmi_started && !helper->wmi_up)
-		complete_all(&helper->stop_done);
-	return QDF_STATUS_SUCCESS;
-}
-
 
 static bool
 wma_injection_accepts_frames(enum wma_injection_state state)
@@ -1188,7 +268,7 @@ struct wma_injection_helper_snapshot {
 static bool
 wma_injection_helper_owns_resources(const struct wma_injection_helper *helper)
 {
-	return READ_ONCE(helper->native) || READ_ONCE(helper->wmi_created) ||
+	return READ_ONCE(helper->wmi_created) ||
 	       READ_ONCE(helper->wmi_start_pending) ||
 	       READ_ONCE(helper->wmi_started) || READ_ONCE(helper->wmi_up) ||
 	       READ_ONCE(helper->fw_peer_created) ||
@@ -1199,15 +279,11 @@ wma_injection_helper_owns_resources(const struct wma_injection_helper *helper)
 
 static bool
 wma_injection_helper_is_ready(const struct wma_injection_helper *helper,
-			      u8 monitor_vdev_id, u32 chanfreq,
-			      const u8 *interface_mac)
+			      u8 monitor_vdev_id, u32 chanfreq)
 {
 	return READ_ONCE(helper->created) && helper->wmi_started &&
 	       helper->wmi_up && helper->monitor_vdev_id == monitor_vdev_id &&
-	       helper->chanfreq == chanfreq &&
-	       (!helper->native || wma_injection_native_valid((struct wma_injection_helper *)helper)) &&
-	       !qdf_mem_cmp(helper->interface_mac, interface_mac,
-			    QDF_MAC_ADDR_SIZE);
+	       helper->chanfreq == chanfreq;
 }
 
 static void
@@ -1288,7 +364,6 @@ static void wma_injection_queue_work(void)
 
 static bool
 wma_injection_get_helper_snapshot(u8 monitor_vdev_id, u32 chanfreq,
-				  const u8 *interface_mac, u64 generation,
 				  struct wma_injection_helper_snapshot *snapshot)
 {
 	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
@@ -1297,10 +372,8 @@ wma_injection_get_helper_snapshot(u8 monitor_vdev_id, u32 chanfreq,
 
 	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
 	ready = wma_injection_ctx.state == WMA_INJECTION_READY &&
-		READ_ONCE(helper->native) == !!generation &&
-		(!generation || helper->coex_generation == generation) &&
 		wma_injection_helper_is_ready(helper, monitor_vdev_id,
-					      chanfreq, interface_mac);
+					      chanfreq);
 	if (ready) {
 		snapshot->vdev_id = helper->vdev_id;
 		snapshot->peer_id = helper->peer_id;
@@ -1311,11 +384,8 @@ wma_injection_get_helper_snapshot(u8 monitor_vdev_id, u32 chanfreq,
 	return ready;
 }
 
-static bool wma_injection_destroy_native(tp_wma_handle wma);
 static bool __wma_injection_quiesce_helper(tp_wma_handle wma)
 {
-	if (wma_injection_ctx.helper.native)
-		return wma_injection_destroy_native(wma);
 	struct vdev_stop_params vdev_stop = {0};
 	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
 	QDF_STATUS status;
@@ -1419,410 +489,8 @@ static void wma_injection_unmap_free(tp_wma_handle wma, qdf_nbuf_t nbuf)
 	qdf_nbuf_free(nbuf);
 }
 
-static bool wma_injection_destroy_native(tp_wma_handle wma)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct wlan_objmgr_vdev *vdev;
-	ol_txrx_soc_handle soc = wlan_psoc_get_dp_handle(wma->psoc);
-	QDF_STATUS status;
-
-	smp_store_release(&helper->created, false);
-	/* The DELETE callback may be releasing vdev on another CPU now. */
-	if (helper->delete_requested)
-		goto wait_delete;
-	vdev = READ_ONCE(helper->vdev);
-	if (!vdev)
-		goto cleared;
-	if (!wma_injection_wait_for_idle() ||
-	    wlan_vdev_injection_fw_uncertain(vdev))
-		return false;
-	if (helper->start_requested &&
-	    !wait_for_completion_timeout(&helper->start_done, 6 * HZ))
-		return false;
-	if (helper->wmi_started || helper->wmi_up) {
-		if (!helper->stop_requested) {
-			reinit_completion(&helper->stop_done);
-			helper->stop_status = QDF_STATUS_SUCCESS;
-			status = wlan_vdev_mlme_sm_deliver_evt(vdev,
-							 WLAN_VDEV_SM_EV_DOWN,
-							 0, NULL);
-			if (QDF_IS_STATUS_ERROR(status))
-				return false;
-		}
-		if (!wait_for_completion_timeout(&helper->stop_done, 6 * HZ) ||
-		    QDF_IS_STATUS_ERROR(helper->stop_status) ||
-		    helper->wmi_started || helper->wmi_up ||
-		    wlan_vdev_injection_fw_uncertain(vdev))
-			return false;
-	}
-	if (helper->rx_bound) {
-		dp_mon_sta_coex_unbind_helper(soc, helper->vdev_id);
-		helper->rx_bound = false;
-	}
-	if (helper->flow_pool_mapped) {
-		cdp_flow_pool_unmap(soc,
-				    wlan_objmgr_pdev_get_pdev_id(wma->pdev),
-				    helper->vdev_id);
-		helper->flow_pool_mapped = false;
-	}
-	helper->delete_requested = true;
-	status = sme_vdev_delete(cds_get_context(QDF_MODULE_ID_SME), vdev);
-	if (QDF_IS_STATUS_ERROR(status))
-		return false;
-wait_delete:
-	if (!wait_for_completion_timeout(&helper->delete_done, 6 * HZ) ||
-	    !helper->delete_confirmed || READ_ONCE(helper->vdev) ||
-	    QDF_IS_STATUS_ERROR(helper->delete_status))
-		return false;
-
-cleared:
-	wma_info("Native injection helper released: monitor=%u helper=%u",
-		 helper->monitor_vdev_id, helper->vdev_id);
-	qdf_mem_zero(helper, sizeof(*helper));
-	/* Quarantined native owners keep this pin, including after a timeout. */
-	module_put(THIS_MODULE);
-	return true;
-}
-
-static bool
-wma_injection_native_companion_valid(tp_wma_handle wma,
-			 const struct wlan_mlme_sta_mon_snapshot *snapshot,
-			 const uint8_t *helper_mac)
-{
-	struct wlan_objmgr_vdev *sta;
-	struct wlan_channel *channel;
-	bool valid;
-
-	if (!snapshot->sta_ap_coexist)
-		return true;
-	if (!snapshot->ap_owner || snapshot->exclusive ||
-	    snapshot->companion_sta_vdev_id == WLAN_INVALID_VDEV_ID ||
-	    snapshot->companion_sta_vdev_id >= wma->max_bssid ||
-	    snapshot->companion_sta_vdev_id == snapshot->sta_vdev_id ||
-	    snapshot->companion_sta_vdev_id == snapshot->mon_vdev_id)
-		return false;
-	sta = wlan_objmgr_get_vdev_by_id_from_psoc(wma->psoc,
-			snapshot->companion_sta_vdev_id, WLAN_LEGACY_WMA_ID);
-	if (!sta)
-		return false;
-	channel = wlan_vdev_get_active_channel(sta);
-	valid = wlan_vdev_mlme_get_opmode(sta) == QDF_STA_MODE &&
-		!wlan_vdev_is_injection_helper(sta) &&
-		wma->mac_context &&
-		sme_is_conn_state_connected(MAC_HANDLE(wma->mac_context),
-			snapshot->companion_sta_vdev_id) &&
-		QDF_IS_STATUS_SUCCESS(wlan_vdev_mlme_is_active(sta)) &&
-		wlan_vdev_get_pdev(sta) == wma->pdev &&
-		wma->interfaces[snapshot->companion_sta_vdev_id].mac_id ==
-			snapshot->mac_id &&
-		qdf_mem_cmp(wlan_vdev_mlme_get_macaddr(sta), helper_mac,
-			    QDF_MAC_ADDR_SIZE) &&
-		channel && channel->ch_freq == snapshot->channel.ch_freq &&
-		channel->ch_width == snapshot->channel.ch_width &&
-		channel->ch_cfreq1 == snapshot->channel.ch_cfreq1 &&
-		channel->ch_cfreq2 == snapshot->channel.ch_cfreq2;
-#ifdef WLAN_FEATURE_11BE
-	valid = valid && channel->puncture_bitmap == snapshot->channel.puncture_bitmap;
-#endif
-	wlan_objmgr_vdev_release_ref(sta, WLAN_LEGACY_WMA_ID);
-	return valid;
-}
-
-static QDF_STATUS
-wma_injection_native_channel(tp_wma_handle wma,
-			     struct wma_injection_helper *helper,
-			     const struct wlan_mlme_sta_mon_snapshot *snapshot)
-{
-	struct wlan_objmgr_vdev *owner;
-	struct vdev_mlme_obj *owner_mlme;
-	struct vdev_mlme_obj *mlme;
-	struct vdev_start_params *start = &helper->start;
-	const struct wlan_channel *channel = &snapshot->channel;
-	uint8_t *owner_mac, *owner_mld;
-	uint32_t dfs_region = 0;
-	int8_t power_limit, min_power;
-	QDF_STATUS status = QDF_STATUS_E_AGAIN;
-
-	if (!wma_injection_native_companion_valid(wma, snapshot, helper->mac_addr))
-		return status;
-	owner = wlan_objmgr_get_vdev_by_id_from_psoc(wma->psoc,
-				snapshot->exclusive ? snapshot->mon_vdev_id :
-				snapshot->sta_vdev_id, WLAN_LEGACY_WMA_ID);
-	if (!owner)
-		return status;
-	owner_mlme = wlan_vdev_mlme_get_cmpt_obj(owner);
-	mlme = wlan_vdev_mlme_get_cmpt_obj(helper->vdev);
-	owner_mac = wlan_vdev_mlme_get_macaddr(owner);
-	owner_mld = wlan_vdev_mlme_get_macaddr(owner);
-	if (!owner_mlme || !mlme ||
-	    !qdf_mem_cmp(owner_mac, helper->mac_addr, QDF_MAC_ADDR_SIZE) ||
-	    !qdf_mem_cmp(owner_mld, helper->mac_addr, QDF_MAC_ADDR_SIZE) ||
-	    qdf_mem_cmp(wlan_vdev_mlme_get_bss_chan(owner), channel,
-			sizeof(*channel)))
-		goto out;
-
-	status = wma_injection_native_power(wma, helper, owner, channel,
-					    snapshot->exclusive || snapshot->ap_owner,
-					    &power_limit);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto out;
-	/* The legacy MLME byte holds the firmware's signed dBm minimum. */
-	min_power = (int8_t)owner_mlme->mgmt.generic.minpower;
-	if (power_limit < min_power) {
-		status = QDF_STATUS_E_NOSUPPORT;
-		goto out;
-	}
-	status = QDF_STATUS_E_AGAIN;
-	qdf_mem_copy(wlan_vdev_mlme_get_des_chan(helper->vdev), channel,
-		     sizeof(*channel));
-	qdf_mem_copy(mlme->mgmt.generic.bssid, helper->mac_addr,
-		     QDF_MAC_ADDR_SIZE);
-	start->vdev_id = helper->vdev_id;
-	start->channel.chan_id = channel->ch_ieee;
-	start->channel.pwr = power_limit;
-	start->channel.mhz = channel->ch_freq;
-	start->channel.half_rate = owner_mlme->mgmt.rate_info.half_rate;
-	start->channel.quarter_rate = owner_mlme->mgmt.rate_info.quarter_rate;
-	start->channel.dfs_set = wlan_reg_is_dfs_for_freq(wma->pdev,
-							channel->ch_freq);
-	start->channel.is_chan_passive = start->channel.dfs_set;
-	start->channel.allow_ht = owner_mlme->proto.ht_info.allow_ht;
-	start->channel.allow_vht = owner_mlme->proto.vht_info.allow_vht;
-	start->channel.phy_mode = owner_mlme->mgmt.generic.phy_mode;
-	start->channel.cfreq1 = channel->ch_cfreq1;
-	start->channel.cfreq2 = channel->ch_cfreq2;
-	start->channel.maxpower = power_limit;
-	start->channel.minpower = min_power;
-	start->channel.maxregpower = power_limit;
-	start->channel.antennamax = owner_mlme->mgmt.generic.antennamax;
-	start->channel.reg_class_id = owner_mlme->mgmt.generic.reg_class_id;
-#ifdef WLAN_FEATURE_11BE
-	start->channel.puncture_bitmap = channel->puncture_bitmap;
-	start->eht_ops = owner_mlme->proto.eht_ops_info.eht_ops;
-#endif
-	start->preferred_tx_streams = 1;
-	start->preferred_rx_streams = 1;
-	wlan_reg_get_dfs_region(wma->pdev, &dfs_region);
-	start->regdomain = dfs_region;
-	start->he_ops = owner_mlme->proto.he_ops_info.he_ops;
-	helper->expected_mac_id = snapshot->mac_id;
-	if (wma_injection_native_valid(helper) &&
-	    wma_injection_native_power_valid(helper))
-		status = QDF_STATUS_SUCCESS;
-out:
-	wlan_objmgr_vdev_release_ref(owner, WLAN_LEGACY_WMA_ID);
-	return status;
-}
-
-static bool
-wma_injection_native_mac_available(tp_wma_handle wma,
-				 const struct wlan_mlme_sta_mon_snapshot *snapshot,
-				 const uint8_t *mac)
-{
-	struct wlan_objmgr_vdev *vdev;
-	bool available;
-
-	if (!wma_injection_native_companion_valid(wma, snapshot, mac))
-		return false;
-	/* Reject every native link address before firmware CREATE can touch it. */
-	vdev = wlan_objmgr_get_vdev_by_macaddr_from_pdev_no_state(
-			wma->pdev, (uint8_t *)mac, WLAN_LEGACY_WMA_ID);
-	if (vdev) {
-		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_WMA_ID);
-		return false;
-	}
-	vdev = wlan_objmgr_get_vdev_by_id_from_psoc(wma->psoc,
-				snapshot->exclusive ? snapshot->mon_vdev_id :
-				snapshot->sta_vdev_id, WLAN_LEGACY_WMA_ID);
-	if (!vdev)
-		return false;
-	available = qdf_mem_cmp(wlan_vdev_mlme_get_macaddr(vdev), mac,
-				QDF_MAC_ADDR_SIZE) &&
-		qdf_mem_cmp(wlan_vdev_mlme_get_macaddr(vdev), mac,
-			    QDF_MAC_ADDR_SIZE);
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_WMA_ID);
-	return available;
-}
-
-static QDF_STATUS
-__wma_injection_ensure_native(tp_wma_handle wma, uint8_t monitor_vdev_id,
-			      uint32_t chanfreq, const uint8_t *interface_mac,
-			      uint64_t generation)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct wlan_mlme_sta_mon_snapshot snapshot;
-	struct wlan_vdev_create_params create = {0};
-	struct wlan_objmgr_vdev *vdev;
-	ol_txrx_soc_handle soc = wlan_psoc_get_dp_handle(wma->psoc);
-	cdp_config_param_type val = {0};
-	uint8_t peer_vdev_id;
-	QDF_STATUS status;
-	const char *stage = "ownership";
-
-	if (!wlan_mlme_sta_mon_get_snapshot(wma->psoc, monitor_vdev_id,
-					   generation, &snapshot) ||
-	    snapshot.channel.ch_freq != chanfreq || !soc ||
-	    snapshot.pdev_id != wlan_objmgr_pdev_get_pdev_id(wma->pdev) ||
-	    !wmi_service_enabled(wma->wmi_handle, wmi_service_sync_delete_cmds) ||
-	    wlan_psoc_nif_feat_cap_get(wma->psoc, WLAN_SOC_F_TESTMODE_ENABLE))
-		return QDF_STATUS_E_AGAIN;
-	/* The real AP must remain supported when the private SAP comes up. */
-	if (snapshot.ap_owner &&
-	    !wmi_service_enabled(wma->wmi_handle,
-		wmi_service_dual_beacon_on_single_mac_scc_support) &&
-	    !wmi_service_enabled(wma->wmi_handle,
-		wmi_service_dual_beacon_on_single_mac_mcc_support))
-		return QDF_STATUS_E_NOSUPPORT;
-	if (helper->native || helper->created) {
-		if (!wma_injection_wait_for_idle())
-			return QDF_STATUS_E_BUSY;
-		__wma_injection_destroy_helper(wma);
-		if (helper->native || helper->created)
-			return QDF_STATUS_E_BUSY;
-	}
-	if (snapshot.sta_ap_coexist) {
-		status = wma_injection_coex_resource_check(1);
-		if (QDF_IS_STATUS_ERROR(status))
-			return status;
-	}
-	if (qdf_is_macaddr_zero((struct qdf_mac_addr *)interface_mac) ||
-	    qdf_is_macaddr_group((struct qdf_mac_addr *)interface_mac) ||
-	    !wma_injection_native_mac_available(wma, &snapshot, interface_mac) ||
-	    wma_objmgr_peer_exist(wma, (uint8_t *)interface_mac, &peer_vdev_id))
-		return QDF_STATUS_E_INVAL;
-	if (!try_module_get(THIS_MODULE))
-		return QDF_STATUS_E_CANCELED;
-
-	qdf_mem_zero(helper, sizeof(*helper));
-	init_completion(&helper->start_done);
-	init_completion(&helper->stop_done);
-	init_completion(&helper->delete_done);
-	helper->monitor_vdev_id = monitor_vdev_id;
-	helper->vdev_id = WLAN_INVALID_VDEV_ID;
-	helper->chanfreq = chanfreq;
-	helper->coex_generation = generation;
-	helper->peer_id = CDP_INVALID_PEER;
-	helper->create_status = QDF_STATUS_E_FAILURE;
-	qdf_mem_copy(helper->interface_mac, interface_mac, QDF_MAC_ADDR_SIZE);
-	qdf_mem_copy(helper->mac_addr, interface_mac, QDF_MAC_ADDR_SIZE);
-	qdf_mem_copy(helper->peer_addr, interface_mac, QDF_MAC_ADDR_SIZE);
-	WRITE_ONCE(helper->native, true);
-
-	stage = "native_create";
-	create.opmode = QDF_SAP_MODE;
-	create.flags = WLAN_VDEV_C_INJECTION_HELPER;
-	create.size_vdev_priv = sizeof(struct vdev_osif_priv);
-
-	qdf_mem_copy(create.macaddr, interface_mac, QDF_MAC_ADDR_SIZE);
-	vdev = sme_vdev_create(cds_get_context(QDF_MODULE_ID_SME), &create);
-	status = helper->create_status;
-	if (!vdev || QDF_IS_STATUS_ERROR(status)) {
-		status = QDF_STATUS_E_FAILURE;
-		goto fail;
-	}
-	helper->dp_attached = true;
-	stage = "native_self_peer";
-	status = sme_vdev_post_vdev_create_setup(
-				cds_get_context(QDF_MODULE_ID_SME), vdev);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	helper->dp_peer_attached = true;
-
-	stage = "native_channel";
-	status = wma_injection_native_channel(wma, helper, &snapshot);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	stage = "raw_datapath";
-	status = cdp_flow_pool_map(soc, snapshot.pdev_id, helper->vdev_id);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	helper->flow_pool_mapped = true;
-	val.cdp_vdev_param_tx_encap = htt_cmn_pkt_type_raw;
-	status = cdp_txrx_set_vdev_param(soc, helper->vdev_id,
-					CDP_TX_ENCAP_TYPE, val);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	val.cdp_vdev_param_rx_decap = htt_cmn_pkt_type_raw;
-	status = cdp_txrx_set_vdev_param(soc, helper->vdev_id,
-					CDP_RX_DECAP_TYPE, val);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	status = wma_vdev_set_param(wma->wmi_handle, helper->vdev_id,
-				   wmi_vdev_param_tx_encap_type,
-				   htt_cmn_pkt_type_raw);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	status = wma_vdev_set_param(wma->wmi_handle, helper->vdev_id,
-				   wmi_vdev_param_rx_decap_type,
-				   htt_cmn_pkt_type_raw);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	stage = "native_peer_map";
-	if (!wait_event_timeout(wma_injection_ctx.peer_map_wait,
-		cdp_get_peer_id(soc, helper->vdev_id, helper->peer_addr) !=
-		CDP_INVALID_PEER, 2 * HZ)) {
-		status = QDF_STATUS_E_TIMEOUT;
-		goto fail;
-	}
-	helper->peer_id = cdp_get_peer_id(soc, helper->vdev_id,
-					 helper->peer_addr);
-	status = cdp_peer_state_update(soc, helper->peer_addr,
-				       OL_TXRX_PEER_STATE_AUTH);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	status = cdp_peer_authorize(soc, helper->vdev_id, helper->peer_addr, 1);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	status = wma_set_peer_param(wma, helper->peer_addr,
-				    WMI_HOST_PEER_AUTHORIZE, 1, helper->vdev_id);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	stage = "native_rx_binding";
-	status = dp_mon_sta_coex_bind_helper(soc, helper->vdev_id,
-					    monitor_vdev_id, generation,
-					    wma_injection_coex_token, wma->psoc);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	helper->rx_bound = true;
-	stage = "native_start";
-	helper->start_requested = true;
-	status = wlan_vdev_mlme_sm_deliver_evt(vdev, WLAN_VDEV_SM_EV_START,
-					      0, NULL);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		helper->start_requested = false;
-		goto fail;
-	}
-	if (!wait_for_completion_timeout(&helper->start_done, 6 * HZ)) {
-		status = QDF_STATUS_E_TIMEOUT;
-		goto fail;
-	}
-	status = helper->start_status;
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	if (!wma_injection_native_valid(helper) || !helper->power_programmed ||
-	    !wma_injection_native_power_valid(helper)) {
-		status = QDF_STATUS_E_AGAIN;
-		goto fail;
-	}
-	smp_store_release(&helper->created, true);
-	wma_info("Native injection ready: monitor=%u helper=%u peer=%u generation=%llu freq=%u power=%d mac=%pM",
-		 monitor_vdev_id, helper->vdev_id, helper->peer_id,
-		 generation, chanfreq, helper->start.channel.maxregpower,
-		 helper->mac_addr);
-	return QDF_STATUS_SUCCESS;
-fail:
-	wma_err("Native injection setup failed: stage=%s monitor=%u helper=%u status=%d",
-		stage, monitor_vdev_id, helper->vdev_id, status);
-	wlan_mlme_sta_mon_invalidate_owner(wma->psoc, monitor_vdev_id);
-	if (!wma_injection_destroy_native(wma))
-		wma_err("Native injection owner retained pending real completion");
-	return status;
-}
-
 static bool __wma_injection_destroy_helper(tp_wma_handle wma)
 {
-	if (wma_injection_ctx.helper.native)
-		return wma_injection_destroy_native(wma);
 	const enum wma_injection_helper_op peer_unmap_op =
 		WMA_INJECTION_HELPER_OP_PEER_UNMAP;
 	struct peer_delete_cmd_params peer_delete = {0};
@@ -2051,27 +719,9 @@ fail:
 	return status;
 }
 
-static void wma_injection_select_mac(uint8_t *helper_mac,
-				     const uint8_t *interface_mac,
-				     const uint8_t *monitor_mac)
-{
-	/*
-	 * On MLO-capable adapters the netdev/MLD address differs from the
-	 * monitor link address. Give the helper the address userspace uses so
-	 * firmware can handle replies to it. Never derive it from a raw TA:
-	 * injected frames may deliberately contain another transmitter.
-	 */
-	qdf_mem_copy(helper_mac, interface_mac, QDF_MAC_ADDR_SIZE);
-	if (!qdf_mem_cmp(interface_mac, monitor_mac, QDF_MAC_ADDR_SIZE)) {
-		/* Preserve the distinct helper on layouts with a shared address. */
-		helper_mac[0] = (helper_mac[0] ^ 0x04) | 0x02;
-		helper_mac[0] &= ~0x01;
-	}
-}
-
 static QDF_STATUS
 __wma_injection_ensure_helper(tp_wma_handle wma, u8 monitor_vdev_id,
-			      u32 chanfreq, const u8 *interface_mac)
+			      u32 chanfreq)
 {
 	struct vdev_create_params create = {0};
 	struct vdev_start_params start = {0};
@@ -2081,7 +731,6 @@ __wma_injection_ensure_helper(tp_wma_handle wma, u8 monitor_vdev_id,
 	struct wlan_objmgr_vdev *monitor_vdev;
 	ol_txrx_soc_handle soc = cds_get_context(QDF_MODULE_ID_SOC);
 	u8 *monitor_mac;
-	u8 peer_vdev_id;
 	const char *stage = "validate";
 	int i, max_id;
 	QDF_STATUS status;
@@ -2089,19 +738,12 @@ __wma_injection_ensure_helper(tp_wma_handle wma, u8 monitor_vdev_id,
 	QDF_STATUS peer_authorize_status;
 	QDF_STATUS fw_authorize_status;
 
-	if (wma_injection_helper_is_ready(helper, monitor_vdev_id, chanfreq,
-					  interface_mac)) {
+	if (wma_injection_helper_is_ready(helper, monitor_vdev_id, chanfreq)) {
 		wma_injection_publish_helper(helper);
 		return QDF_STATUS_SUCCESS;
 	}
-	/* Refill owns setup; completions may still reference the old peer. */
-	if (wma_injection_helper_owns_resources(helper) &&
-	    !wma_injection_wait_for_idle())
-		return QDF_STATUS_E_AGAIN;
 	if ((!READ_ONCE(helper->created) ||
-	     helper->monitor_vdev_id != monitor_vdev_id ||
-	     qdf_mem_cmp(helper->interface_mac, interface_mac,
-			 QDF_MAC_ADDR_SIZE)) &&
+	     helper->monitor_vdev_id != monitor_vdev_id) &&
 	    wma_injection_helper_owns_resources(helper)) {
 		if (!__wma_injection_destroy_helper(wma))
 			return QDF_STATUS_E_AGAIN;
@@ -2144,19 +786,15 @@ __wma_injection_ensure_helper(tp_wma_handle wma, u8 monitor_vdev_id,
 	helper->vdev_id = i;
 	helper->monitor_vdev_id = monitor_vdev_id;
 	helper->chanfreq = chanfreq;
-	qdf_mem_copy(helper->interface_mac, interface_mac, QDF_MAC_ADDR_SIZE);
-	wma_injection_select_mac(helper->mac_addr, interface_mac, monitor_mac);
+	qdf_mem_copy(helper->mac_addr, monitor_mac, QDF_MAC_ADDR_SIZE);
+	/* The monitor address already has the local bit set. */
+	helper->mac_addr[0] = (helper->mac_addr[0] ^ 0x04) | 0x02;
+	helper->mac_addr[0] &= ~0x01;
 	qdf_mem_copy(helper->peer_addr, helper->mac_addr, QDF_MAC_ADDR_SIZE);
 	helper->peer_id = CDP_INVALID_PEER;
 	helper->generation = ++wma_injection_ctx.next_generation;
 	if (!helper->generation)
 		helper->generation = ++wma_injection_ctx.next_generation;
-
-	stage = "peer_address";
-	if (wma_objmgr_peer_exist(wma, helper->mac_addr, &peer_vdev_id)) {
-		status = QDF_STATUS_E_BUSY;
-		goto fail;
-	}
 
 	stage = "vdev_create";
 	create.vdev_id = helper->vdev_id;
@@ -2299,13 +937,19 @@ static u16 wma_injection_next_desc(void)
 	return 0;
 }
 
+static bool wma_injection_is_data(qdf_nbuf_t nbuf)
+{
+	if (!nbuf || !qdf_nbuf_len(nbuf))
+		return false;
+
+	return (qdf_nbuf_data(nbuf)[0] & IEEE80211_FC0_TYPE_MASK) ==
+		IEEE80211_FC0_TYPE_DATA;
+}
+
 static enum wma_injection_route
 wma_injection_select_route(qdf_nbuf_t nbuf)
 {
-	__le16 fc = cpu_to_le16(get_unaligned_le16(qdf_nbuf_data(nbuf)));
-
-	/* Radiotap settings must not divert management/control from WMI. */
-	if (READ_ONCE(wma_injection_direct_dp) && ieee80211_is_data(fc))
+	if (READ_ONCE(wma_injection_direct_dp) && wma_injection_is_data(nbuf))
 		return WMA_INJECTION_ROUTE_DP;
 
 	return WMA_INJECTION_ROUTE_WMI;
@@ -2364,8 +1008,6 @@ static void wma_injection_release_slot(struct wma_injection_slot *slot)
 
 static void wma_injection_orphan_slots(void)
 {
-	if (READ_ONCE(wma_injection_ctx.helper.native))
-		return;
 	int i;
 
 	spin_lock_bh(&wma_injection_ctx.lock);
@@ -2414,24 +1056,18 @@ static void wma_injection_purge_pending(void)
 {
 	qdf_nbuf_t nbuf;
 
-	while ((nbuf = qdf_nbuf_queue_remove(&wma_injection_ctx.pending_mgmt))) {
-		qdf_nbuf_reset_ctxt(nbuf);
+	while ((nbuf = qdf_nbuf_queue_remove(&wma_injection_ctx.pending_mgmt)))
 		qdf_nbuf_free(nbuf);
-	}
-	while ((nbuf = qdf_nbuf_queue_remove(&wma_injection_ctx.pending_dp))) {
-		qdf_nbuf_reset_ctxt(nbuf);
+	while ((nbuf = qdf_nbuf_queue_remove(&wma_injection_ctx.pending_dp)))
 		qdf_nbuf_free(nbuf);
-	}
 }
 
 static void wma_injection_purge_pending_dp(void)
 {
 	qdf_nbuf_t nbuf;
 
-	while ((nbuf = qdf_nbuf_queue_remove(&wma_injection_ctx.pending_dp))) {
-		qdf_nbuf_reset_ctxt(nbuf);
+	while ((nbuf = qdf_nbuf_queue_remove(&wma_injection_ctx.pending_dp)))
 		qdf_nbuf_free(nbuf);
-	}
 }
 
 static bool wma_injection_helper_has_resources(void)
@@ -2535,8 +1171,6 @@ static void wma_injection_refresh_monitor_if_idle(void)
 
 static void wma_injection_retire_idle_helper(void)
 {
-	if (READ_ONCE(wma_injection_ctx.helper.native))
-		return;
 	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
 	ol_txrx_soc_handle soc = cds_get_context(QDF_MODULE_ID_SOC);
 	u8 monitor_vdev_id;
@@ -2595,12 +1229,6 @@ static void wma_injection_retire_idle_helper(void)
 
 static void wma_injection_recover_timed_out_helper(void)
 {
-	if (READ_ONCE(wma_injection_ctx.helper.native)) {
-		wlan_mlme_sta_mon_invalidate_owner(wma_injection_ctx.wma->psoc,
-			wma_injection_ctx.helper.monitor_vdev_id);
-		wma_injection_pre_stop_cleanup();
-		return;
-	}
 	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
 	ol_txrx_soc_handle soc = cds_get_context(QDF_MODULE_ID_SOC);
 	u8 monitor_vdev_id;
@@ -2652,8 +1280,7 @@ resume:
 
 static QDF_STATUS
 wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
-		   u8 monitor_vdev_id, enum wma_injection_route route,
-		   const struct cdp_tx_injection_params *tx_params, u64 generation)
+		   u8 monitor_vdev_id, enum wma_injection_route route)
 {
 	struct wmi_mgmt_params params = {0};
 	struct cdp_tx_exception_metadata tx_exc = {0};
@@ -2662,38 +1289,19 @@ wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
 	ol_txrx_soc_handle soc;
 	qdf_nbuf_t unsent;
 	bool direct_dp = route == WMA_INJECTION_ROUTE_DP;
-	__le16 frame_control;
 	u32 chanfreq;
 	u16 desc_id;
 	unsigned long flags;
 	QDF_STATUS status;
 
-	if (generation ? !wlan_mlme_sta_mon_token_valid(wma->psoc, monitor_vdev_id, generation) :
-	    wlan_mlme_sta_mon_is_owner(wma->psoc, monitor_vdev_id))
-		return QDF_STATUS_E_CANCELED;
 	if (monitor_vdev_id >= wma->max_bssid ||
 	    !wma->interfaces[monitor_vdev_id].vdev)
 		return QDF_STATUS_E_INVAL;
 	chanfreq = wma->interfaces[monitor_vdev_id].ch_freq;
 	if (!chanfreq)
 		return QDF_STATUS_E_AGAIN;
-	if (tx_params->chanfreq && tx_params->chanfreq != chanfreq)
-		return QDF_STATUS_E_INVAL;
-	if (direct_dp && tx_params->rate_valid &&
-	    tx_params->preamble == CDP_INJECTION_CCK &&
-	    (chanfreq < 2400 || chanfreq >= 2500))
-		return QDF_STATUS_E_INVAL;
-	frame_control = cpu_to_le16(get_unaligned_le16(qdf_nbuf_data(nbuf)));
-	/*
-	 * This firmware's WMI injector accepts data and control frames too.
-	 * HTT rate/BW/GI overrides apply only to DP; WMI selects its own rate,
-	 * as it did before per-packet radiotap settings were introduced.
-	 */
-	if (tx_params->no_ack)
-		pr_info_once("wlan injection: NOACK uses one TX attempt; firmware ACK timing and raw sequence preservation require RF validation\n");
 
 	if (!wma_injection_get_helper_snapshot(monitor_vdev_id, chanfreq,
-					       tx_params->interface_mac, generation,
 					       &helper)) {
 		mutex_lock(&wma_injection_ctx.helper_lock);
 		spin_lock_irqsave(&wma_injection_ctx.lock, flags);
@@ -2704,19 +1312,11 @@ wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
 		}
 		wma_injection_ctx.state = WMA_INJECTION_SETTING_UP;
 		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-		status = generation ?
-			__wma_injection_ensure_native(wma, monitor_vdev_id, chanfreq,
-						      tx_params->interface_mac, generation) :
-			__wma_injection_ensure_helper(wma, monitor_vdev_id,
-						       chanfreq,
-						       tx_params->interface_mac);
-		if (!QDF_IS_STATUS_ERROR(status) && generation)
-			wma_injection_set_state(WMA_INJECTION_READY);
+		status = __wma_injection_ensure_helper(wma, monitor_vdev_id,
+						       chanfreq);
 		if (!QDF_IS_STATUS_ERROR(status) &&
 		    !wma_injection_get_helper_snapshot(monitor_vdev_id,
-						       chanfreq,
-						       tx_params->interface_mac, generation,
-						       &helper))
+						       chanfreq, &helper))
 			status = QDF_STATUS_E_AGAIN;
 		if (QDF_IS_STATUS_ERROR(status)) {
 			spin_lock_irqsave(&wma_injection_ctx.lock, flags);
@@ -2752,15 +1352,9 @@ wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
 	params.pdata = qdf_nbuf_data(nbuf);
 	params.qdf_ctx = cds_get_context(QDF_MODULE_ID_QDF_DEVICE);
 	params.tx_params_valid = true;
-	params.tx_param.retry_limit = tx_params->retries_valid ?
-				     tx_params->retries : 1;
+	params.tx_param.retry_limit = 1;
 
 	slot->nbuf = nbuf;
-	slot->params = *tx_params;
-	slot->generation = generation;
-	slot->monitor_vdev_id = monitor_vdev_id;
-	slot->completion_status = -ENODATA;
-	slot->params.chanfreq = chanfreq;
 	slot->desc_id = desc_id;
 	slot->submitted = jiffies;
 	slot->route = route;
@@ -2777,7 +1371,7 @@ wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
 		QDF_NBUF_CB_TX_PACKET_TO_FW(nbuf) = 0;
 		QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf) = desc_id;
 		tx_exc.peer_id = helper.peer_id;
-		tx_exc.tid = tx_params->tid;
+		tx_exc.tid = CDP_INVALID_TID;
 		tx_exc.tx_encap_type = htt_cmn_pkt_type_raw;
 		tx_exc.sec_type = CDP_INVALID_SEC_TYPE;
 		tx_exc.is_raw_injection = 1;
@@ -2785,29 +1379,14 @@ wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
 					       &tx_exc) : nbuf;
 		/* The wifi3 free path owns the buffer after a successful send. */
 		status = unsent ? QDF_STATUS_E_BUSY : QDF_STATUS_SUCCESS;
-	} else {
-		unsigned long guard_flags;
-		if (generation && !wlan_mlme_sta_mon_tx_begin(wma->psoc,
-			monitor_vdev_id, generation, &guard_flags)) {
-			status = QDF_STATUS_E_CANCELED;
 		} else {
-			status = wmi_mgmt_unified_cmd_send(wma->wmi_handle, &params);
-			if (generation) wlan_mlme_sta_mon_tx_end(guard_flags);
-		}
+		status = wmi_mgmt_unified_cmd_send(wma->wmi_handle, &params);
 	}
 	if (QDF_IS_STATUS_ERROR(status)) {
 		spin_lock_bh(&wma_injection_ctx.lock);
 		if (slot->nbuf && slot->desc_id == desc_id)
 			wma_injection_release_slot(slot);
 		spin_unlock_bh(&wma_injection_ctx.lock);
-	} else {
-		atomic64_inc(&injection_submitted);
-		if (tx_params->is_data)
-			atomic64_inc(&injection_data_submitted);
-		if (tx_params->is_eapol)
-			atomic64_inc(&injection_eapol_submitted);
-		if (ieee80211_is_ctl(frame_control))
-			atomic64_inc(&injection_control_submitted);
 	}
 	return status;
 }
@@ -2815,7 +1394,6 @@ wma_injection_send(tp_wma_handle wma, qdf_nbuf_t nbuf,
 static void wma_injection_refill(void)
 {
 	qdf_nbuf_t nbuf;
-	struct wma_injection_cb cb;
 	qdf_nbuf_queue_t *pending;
 	enum wma_injection_route route = WMA_INJECTION_ROUTE_WMI;
 	u8 monitor_vdev_id;
@@ -2837,22 +1415,20 @@ static void wma_injection_refill(void)
 		nbuf = qdf_nbuf_queue_remove(pending);
 		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
 
-		memcpy(&cb, nbuf->cb, sizeof(cb));
-		monitor_vdev_id = cb.monitor_vdev_id;
-		qdf_nbuf_reset_ctxt(nbuf);
+		monitor_vdev_id = qdf_nbuf_get_vdev_ctx(nbuf);
+		qdf_nbuf_set_vdev_ctx(nbuf, 0);
 		status = wma_injection_send(wma_injection_ctx.wma, nbuf,
-					    monitor_vdev_id, route, &cb.params, cb.generation);
+					    monitor_vdev_id, route);
 		if (QDF_IS_STATUS_SUCCESS(status))
 			continue;
 		if (status != QDF_STATUS_E_AGAIN) {
 			wma_err_rl("Injection send failed: status=%d vdev=%u",
 				   status, monitor_vdev_id);
-			atomic64_inc(&injection_send_failed);
 			qdf_nbuf_free(nbuf);
 			continue;
 		}
 
-		memcpy(nbuf->cb, &cb, sizeof(cb));
+		qdf_nbuf_set_vdev_ctx(nbuf, monitor_vdev_id);
 		spin_lock_irqsave(&wma_injection_ctx.lock, flags);
 		if (wma_injection_ctx.state != WMA_INJECTION_STOPPING) {
 			qdf_nbuf_queue_insert_head(pending, nbuf);
@@ -2860,10 +1436,8 @@ static void wma_injection_refill(void)
 			defer_to_worker = true;
 		}
 		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-		if (nbuf) {
-			qdf_nbuf_reset_ctxt(nbuf);
+		if (nbuf)
 			qdf_nbuf_free(nbuf);
-		}
 		break;
 	}
 
@@ -2915,7 +1489,6 @@ static void wma_injection_reaper(struct work_struct *work)
 			continue;
 		}
 		slot->timeout_reported = true;
-		atomic64_inc(&injection_timed_out);
 		timed_out = true;
 		wma_warn("%s injection completion timed out: desc=%u fc=0x%02x",
 			 slot->route == WMA_INJECTION_ROUTE_DP ? "Direct" : "WMI",
@@ -2931,13 +1504,8 @@ static void wma_injection_reaper(struct work_struct *work)
 		schedule_delayed_work(&wma_injection_ctx.reaper, HZ);
 }
 
-QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
-			    const struct cdp_tx_injection_params *params)
+QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id)
 {
-	struct wma_injection_cb cb = {
-		.params = *params,
-		.monitor_vdev_id = monitor_vdev_id,
-	};
 	tp_wma_handle wma = wma_injection_ctx.wma;
 	enum wma_injection_route route;
 	qdf_nbuf_queue_t *pending;
@@ -2948,7 +1516,7 @@ QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
 
 	if (!READ_ONCE(wma_injection_ctx.initialized) || !wma)
 		return QDF_STATUS_E_AGAIN;
-	if (!nbuf || qdf_nbuf_len(nbuf) < sizeof(__le16))
+	if (!nbuf || !qdf_nbuf_len(nbuf))
 		return QDF_STATUS_E_INVAL;
 	route = wma_injection_select_route(nbuf);
 	pending = route == WMA_INJECTION_ROUTE_DP ?
@@ -2962,11 +1530,6 @@ QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
 		chanfreq = READ_ONCE(wma->interfaces[monitor_vdev_id].ch_freq);
 
 	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	if (wlan_mlme_sta_mon_is_owner(wma->psoc, monitor_vdev_id) &&
-	    !wlan_mlme_sta_mon_get_token(wma->psoc, monitor_vdev_id, &cb.generation)) {
-		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-		return QDF_STATUS_E_AGAIN;
-	}
 	if (!wma_injection_accepts_frames(wma_injection_ctx.state)) {
 		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
 		return QDF_STATUS_E_AGAIN;
@@ -2975,11 +1538,8 @@ QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
 		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
 		return QDF_STATUS_E_BUSY;
 	}
-	BUILD_BUG_ON(sizeof(cb) > sizeof(nbuf->cb));
-	memcpy(nbuf->cb, &cb, sizeof(cb));
-	wma_injection_ctx.coex_resume_ready = false;
+	qdf_nbuf_set_vdev_ctx(nbuf, monitor_vdev_id);
 	qdf_nbuf_queue_add(pending, nbuf);
-	atomic64_inc(&injection_accepted);
 	if (chanfreq && wma_injection_ctx.state != WMA_INJECTION_STOPPING) {
 		wma_injection_ctx.channel_hold_vdev_id = monitor_vdev_id;
 		wma_injection_ctx.channel_hold_freq = chanfreq;
@@ -2992,216 +1552,6 @@ QDF_STATUS wma_injection_tx(qdf_nbuf_t nbuf, u8 monitor_vdev_id,
 	if (kick_worker)
 		wma_injection_queue_work();
 	return QDF_STATUS_SUCCESS;
-}
-
-bool wma_injection_get_tx_params(qdf_nbuf_t nbuf,
-				struct cdp_tx_injection_params *params)
-{
-	uint16_t desc_id = QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf);
-	struct wma_injection_slot *slot;
-	bool found = false;
-
-	if (!cdp_nbuf_is_injection(nbuf))
-		return false;
-	slot = &wma_injection_ctx.slots[desc_id % WMA_INJECTION_SLOT_COUNT];
-	spin_lock_bh(&wma_injection_ctx.lock);
-	if (slot->nbuf == nbuf && slot->desc_id == desc_id &&
-	    slot->route == WMA_INJECTION_ROUTE_DP) {
-		*params = slot->params;
-		found = true;
-	}
-	spin_unlock_bh(&wma_injection_ctx.lock);
-	return found;
-}
-
-bool wma_injection_tx_begin(qdf_nbuf_t nbuf,
-			    struct cdp_injection_tx_guard *guard)
-{
-	uint16_t desc_id = QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf);
-	struct wma_injection_slot *slot;
-	struct wlan_objmgr_psoc *psoc;
-	uint64_t generation;
-	uint8_t monitor_vdev_id;
-	unsigned long flags;
-
-	guard->held = false;
-	if (!cdp_nbuf_is_injection(nbuf))
-		return true;
-	slot = &wma_injection_ctx.slots[desc_id % WMA_INJECTION_SLOT_COUNT];
-	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	if (!wma_injection_ctx.initialized || (wma_injection_ctx.state == WMA_INJECTION_STOPPING) ||
-	    slot->nbuf != nbuf || slot->desc_id != desc_id || !(slot->route == WMA_INJECTION_ROUTE_DP)) {
-		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-		return false;
-	}
-	generation = slot->generation;
-	monitor_vdev_id = slot->monitor_vdev_id;
-	psoc = wma_injection_ctx.wma->psoc;
-	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-	if (!generation)
-		return true;
-	guard->held = wlan_mlme_sta_mon_tx_begin(psoc, monitor_vdev_id,
-						generation, &guard->flags);
-	return guard->held;
-}
-
-void wma_injection_tx_end(struct cdp_injection_tx_guard *guard)
-{
-	if (guard->held) {
-		wlan_mlme_sta_mon_tx_end(guard->flags);
-		guard->held = false;
-	}
-}
-
-QDF_STATUS wma_injection_coex_resume(uint8_t monitor_vdev_id,
-				     uint64_t generation)
-{
-	struct wlan_mlme_sta_mon_snapshot snapshot;
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	QDF_STATUS status = QDF_STATUS_E_BUSY;
-	tp_wma_handle wma;
-	unsigned long flags;
-
-	if (!generation || !READ_ONCE(wma_injection_ctx.initialized))
-		return QDF_STATUS_E_AGAIN;
-	mutex_lock(&wma_injection_ctx.lifecycle_lock);
-	mutex_lock(&wma_injection_ctx.helper_lock);
-	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	wma = wma_injection_ctx.wma;
-	if (!wma_injection_ctx.initialized || !wma || !wma->wmi_handle ||
-	    !wma_injection_ctx.coex_resume_ready ||
-	    wma_injection_ctx.channel_change_freq ||
-	    wma_injection_ctx.in_flight ||
-	    atomic_read_acquire(&wma_injection_ctx.refill_busy) ||
-	    helper->native || helper->created || helper->wmi_created ||
-	    helper->dp_attached || wma_injection_pending_count_locked())
-		goto out;
-	/* HDD enters READY only after validating both vdevs' complete channel. */
-	if (monitor_vdev_id >= wma->max_bssid ||
-	    !wma->interfaces[monitor_vdev_id].vdev ||
-	    !wlan_mlme_sta_mon_get_snapshot(wma->psoc, monitor_vdev_id,
-					   generation, &snapshot) ||
-	    snapshot.channel.ch_freq != wma->interfaces[monitor_vdev_id].ch_freq ||
-	    !wlan_mlme_sta_mon_token_valid(wma->psoc, monitor_vdev_id, generation)) {
-		status = QDF_STATUS_E_CANCELED;
-		goto out;
-	}
-	wma_injection_ctx.coex_resume_ready = false;
-	wma_injection_ctx.state = WMA_INJECTION_IDLE;
-	status = QDF_STATUS_SUCCESS;
-out:
-	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-	mutex_unlock(&wma_injection_ctx.helper_lock);
-	mutex_unlock(&wma_injection_ctx.lifecycle_lock);
-	if (QDF_IS_STATUS_SUCCESS(status)) {
-		mod_delayed_work(system_highpri_wq, &wma_injection_ctx.reaper, HZ);
-		wma_info("STA monitor injection resumed: monitor=%u generation=%llu",
-			 monitor_vdev_id, generation);
-		wma_injection_queue_work();
-	}
-	return status;
-}
-
-QDF_STATUS
-wma_injection_exclusive_resume(uint8_t monitor_id, uint64_t generation,
-				const uint8_t *interface_mac)
-{
-	struct wma_injection_helper *helper = &wma_injection_ctx.helper;
-	struct wlan_mlme_sta_mon_snapshot snapshot;
-	ol_txrx_soc_handle soc = NULL;
-	tp_wma_handle wma;
-	unsigned long flags, guard_flags;
-	QDF_STATUS status = QDF_STATUS_E_BUSY;
-
-	if (!generation || !interface_mac ||
-	    !READ_ONCE(wma_injection_ctx.initialized))
-		return QDF_STATUS_E_AGAIN;
-	mutex_lock(&wma_injection_ctx.lifecycle_lock);
-	mutex_lock(&wma_injection_ctx.helper_lock);
-	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	wma = wma_injection_ctx.wma;
-	if (!wma_injection_ctx.initialized || !wma || !wma->wmi_handle ||
-	    (wma_injection_ctx.state != WMA_INJECTION_STOPPING) || !wma_injection_ctx.coex_resume_ready ||
-	    wma_injection_ctx.channel_change_freq ||
-	    wma_injection_ctx.in_flight ||
-	    atomic_read_acquire(&wma_injection_ctx.refill_busy) ||
-	    helper->native || helper->created || helper->wmi_created ||
-	    helper->dp_attached || wma_injection_pending_count_locked()) {
-		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-		goto out;
-	}
-	wma_injection_ctx.coex_resume_ready = false;
-	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-	soc = wlan_psoc_get_dp_handle(wma->psoc);
-	if (!soc || monitor_id >= wma->max_bssid ||
-	    !wma->interfaces[monitor_id].vdev ||
-	    !wlan_mlme_sta_mon_get_snapshot(wma->psoc, monitor_id, generation,
-					   &snapshot) || !snapshot.exclusive ||
-	    snapshot.channel.ch_freq != wma->interfaces[monitor_id].ch_freq) {
-		status = QDF_STATUS_E_CANCELED;
-		goto fail;
-	}
-	/* Visit every old mon_lock while delivery is paused, remove stale lmac
-	 * views and bind the retained parent to its confirmed new radio/channel.
-	 */
-	status = dp_mon_sta_coex_rebind(soc, monitor_id, snapshot.mac_id,
-				       snapshot.channel.ch_freq);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	status = __wma_injection_ensure_native(wma, monitor_id,
-					     snapshot.channel.ch_freq, interface_mac,
-					     generation);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	/* Clearing the pause bit is nonblocking. Share the publication guard so
-	 * a concurrent regulatory/owner invalidation cannot lose its pause.
-	 */
-	if (!wlan_mlme_sta_mon_tx_begin(wma->psoc, monitor_id, generation,
-					&guard_flags)) {
-		status = QDF_STATUS_E_CANCELED;
-		goto fail;
-	}
-	dp_mon_sta_coex_unpause(soc);
-	wlan_mlme_sta_mon_tx_end(guard_flags);
-	/* Helper setup changes RXDMA routing: success includes restoring it. */
-	status = cdp_refresh_monitor_mode(soc, snapshot.pdev_id, monitor_id);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto fail;
-	if (!wma_injection_native_valid(helper) ||
-	    !wma_injection_native_power_valid(helper)) {
-		status = QDF_STATUS_E_CANCELED;
-		goto fail;
-	}
-	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	if (!wma_injection_ctx.initialized ||
-	    !wlan_mlme_sta_mon_token_valid(wma->psoc, monitor_id, generation)) {
-		spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-		status = QDF_STATUS_E_CANCELED;
-		goto fail;
-	}
-	wma_injection_ctx.state = WMA_INJECTION_READY;
-	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-	status = QDF_STATUS_SUCCESS;
-	goto out;
-fail:
-	if (soc)
-		dp_mon_sta_coex_pause(soc);
-	wlan_mlme_sta_mon_invalidate_owner(wma->psoc, monitor_id);
-	/* No data descriptor has been published while this context was paused.
-	 * Native cleanup still requires genuine STOP and DELETE confirmations.
-	 */
-	if (helper->native && !wma_injection_destroy_native(wma))
-		wma_err("Exclusive monitor helper retained pending real completion");
-out:
-	mutex_unlock(&wma_injection_ctx.helper_lock);
-	mutex_unlock(&wma_injection_ctx.lifecycle_lock);
-	if (QDF_IS_STATUS_SUCCESS(status)) {
-		mod_delayed_work(system_highpri_wq, &wma_injection_ctx.reaper, HZ);
-		wma_info("Exclusive monitor injection resumed: monitor=%u generation=%llu",
-			 monitor_id, generation);
-		wma_injection_queue_work();
-	}
-	return status;
 }
 
 QDF_STATUS
@@ -3381,9 +1731,6 @@ bool wma_injection_complete(void *wma_context, u16 desc_id, u32 status)
 	wma_injection_release_slot(slot);
 	spin_unlock_bh(&wma_injection_ctx.lock);
 	wake_up_all(&wma_injection_ctx.refill_wait);
-	atomic64_inc(&injection_completed);
-	if (status)
-		atomic64_inc(&injection_completion_failed);
 	wma_injection_log_completion(desc_id, status, frame_control, log_success);
 	wma_injection_unmap_free(wma, nbuf);
 	wma_injection_queue_work();
@@ -3391,49 +1738,44 @@ bool wma_injection_complete(void *wma_context, u16 desc_id, u32 status)
 }
 
 bool wma_injection_dp_complete(void *wma_context, qdf_nbuf_t nbuf,
-                               s32 status)
+			       s32 status)
 {
- u16 desc = QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf);
- struct wma_injection_slot *slot;
- bool found = false;
- if ((desc & ~WMA_INJECTION_DESC_SEQUENCE_MASK) != WMA_INJECTION_DESC_TAG_MASK)
-  return false;
- slot = &wma_injection_ctx.slots[desc % WMA_INJECTION_SLOT_COUNT];
- spin_lock_bh(&wma_injection_ctx.lock);
- if (slot->nbuf == nbuf && slot->desc_id == desc &&
-     slot->route == WMA_INJECTION_ROUTE_DP) {
-  slot->completion_status = status;
-  found = true;
- }
- spin_unlock_bh(&wma_injection_ctx.lock);
- return found;
-}
+	u16 desc_id = QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf);
+	struct wma_injection_slot *slot;
+	bool refill = false;
+	bool log_success = false;
 
-void wma_injection_dp_release(qdf_nbuf_t nbuf, u8 slot_index)
-{
- struct wma_injection_slot *slot = &wma_injection_ctx.slots[slot_index];
- s32 status = -ENODATA;
- bool released = false, log_success = false;
- /* nbuf is an identity token after DMA/descriptor release; never dereference. */
- spin_lock_bh(&wma_injection_ctx.lock);
- if (slot->nbuf == nbuf && slot->route == WMA_INJECTION_ROUTE_DP) {
-  status = slot->completion_status;
-  if (!status && !wma_injection_ctx.success_logged) {
-   wma_injection_ctx.success_logged = true;
-   log_success = true;
-  }
-  wma_injection_release_slot(slot);
-  released = true;
- }
- spin_unlock_bh(&wma_injection_ctx.lock);
- if (!released)
-  return;
- wake_up_all(&wma_injection_ctx.refill_wait);
- atomic64_inc(&injection_completed);
- if (status < 0) atomic64_inc(&injection_completion_unknown);
- else if (status) atomic64_inc(&injection_completion_failed);
- if (log_success) wma_info("Injection Works: first frame completed successfully");
- wma_injection_queue_work();
+	(void)wma_context;
+
+	if ((desc_id & ~WMA_INJECTION_DESC_SEQUENCE_MASK) !=
+	    WMA_INJECTION_DESC_TAG_MASK)
+		return false;
+	QDF_NBUF_CB_MGMT_TXRX_DESC_ID(nbuf) = 0;
+
+	slot = &wma_injection_ctx.slots[desc_id % WMA_INJECTION_SLOT_COUNT];
+	spin_lock_bh(&wma_injection_ctx.lock);
+	if (slot->nbuf == nbuf && slot->desc_id == desc_id &&
+	    (wma_injection_slot_matches(slot->state,
+					WMA_INJECTION_ROUTE_DP) ||
+	     (slot->state == WMA_INJECTION_SLOT_ORPHANED &&
+	      slot->route == WMA_INJECTION_ROUTE_DP))) {
+		if (!status && !wma_injection_ctx.success_logged) {
+			wma_injection_ctx.success_logged = true;
+			log_success = true;
+		}
+		wma_injection_release_slot(slot);
+		refill = true;
+	}
+	spin_unlock_bh(&wma_injection_ctx.lock);
+	if (refill)
+		wake_up_all(&wma_injection_ctx.refill_wait);
+	if (log_success)
+		wma_info("Injection Works: first frame completed successfully");
+
+	if (refill)
+		wma_injection_queue_work();
+
+	return refill;
 }
 
 bool wma_injection_vdev_start_complete(struct vdev_start_response *rsp)
@@ -3603,12 +1945,6 @@ void wma_injection_pre_stop_cleanup(void)
 	mutex_unlock(&wma_injection_ctx.helper_lock);
 
 unlock:
-	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	wma_injection_ctx.coex_resume_ready = destroyed &&
-		!wma_injection_ctx.in_flight &&
-		!atomic_read_acquire(&wma_injection_ctx.refill_busy) &&
-		!wma_injection_pending_count_locked();
-	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
 	mutex_unlock(&wma_injection_ctx.lifecycle_lock);
 	if (!destroyed && wma_injection_helper_has_resources())
 		wma_warn("Injection helper remains owned during monitor stop");
@@ -3624,8 +1960,7 @@ void wma_injection_resume(void)
 
 	mutex_lock(&wma_injection_ctx.lifecycle_lock);
 	spin_lock_irqsave(&wma_injection_ctx.lock, flags);
-	if (wma_injection_ctx.state == WMA_INJECTION_STOPPING &&
-	    !wma_injection_ctx.helper.native) {
+	if (wma_injection_ctx.state == WMA_INJECTION_STOPPING) {
 		wma_injection_ctx.state = WMA_INJECTION_IDLE;
 		resume = true;
 	}
@@ -3644,10 +1979,6 @@ static void wma_injection_init(tp_wma_handle wma)
 		wma_warn("Ignoring duplicate injection context initialization");
 		return;
 	}
-	if (READ_ONCE(wma_injection_ctx.helper.native)) {
-		wma_err("Native injection owner still awaits firmware completion");
-		return;
-	}
 	if (READ_ONCE(wma_injection_ctx.wma) &&
 	    !READ_ONCE(wma_injection_ctx.initialized))
 		wma_injection_reclaim_slots(wma);
@@ -3661,9 +1992,6 @@ static void wma_injection_init(tp_wma_handle wma)
 	atomic_set(&wma_injection_ctx.refill_busy, 0);
 	init_completion(&wma_injection_ctx.operation.done);
 	init_waitqueue_head(&wma_injection_ctx.refill_wait);
-	init_waitqueue_head(&wma_injection_ctx.peer_map_wait);
-	wma_injection_power_init(wma->psoc);
-	wma_injection_ctx.coex_resume_ready = true;
 	INIT_WORK(&wma_injection_ctx.work, wma_injection_work);
 	INIT_DELAYED_WORK(&wma_injection_ctx.retry_work,
 			  wma_injection_retry_work);
@@ -3689,8 +2017,6 @@ static void wma_injection_deinit(tp_wma_handle wma)
 	wma_injection_ctx.channel_change_vdev_id = 0;
 	wma_injection_ctx.channel_change_freq = 0;
 	spin_unlock_irqrestore(&wma_injection_ctx.lock, flags);
-	wma_injection_ctx.coex_resume_ready = false;
-	wma_injection_power_init(NULL);
 	cancel_delayed_work_sync(&wma_injection_ctx.reaper);
 	cancel_delayed_work_sync(&wma_injection_ctx.retry_work);
 	cancel_work_sync(&wma_injection_ctx.work);
@@ -6375,19 +4701,11 @@ QDF_STATUS wma_tx_packet(void *wma_context, void *tx_frame, uint16_t frmLen,
 					 mgmt_param.tx_param.preamble_type);
 	}
 
-	if (!wlan_mlme_sta_mon_mgmt_tx_begin(psoc, vdev_id,
-			pFc->type == SIR_MAC_MGMT_FRAME &&
-			(pFc->subType == SIR_MAC_MGMT_DEAUTH ||
-			 pFc->subType == SIR_MAC_MGMT_DISASSOC))) {
-		status = QDF_STATUS_E_BUSY;
-	} else {
-		status = wlan_mgmt_txrx_mgmt_frame_tx(peer, wma_handle->mac_context,
-						      (qdf_nbuf_t)tx_frame, NULL,
-						      tx_frm_ota_comp_cb,
-						      WLAN_UMAC_COMP_MLME,
-						      &mgmt_param);
-		wlan_mlme_sta_mon_admission_end(psoc);
-	}
+	status = wlan_mgmt_txrx_mgmt_frame_tx(peer, wma_handle->mac_context,
+					      (qdf_nbuf_t)tx_frame, NULL,
+					      tx_frm_ota_comp_cb,
+					      WLAN_UMAC_COMP_MLME,
+					      &mgmt_param);
 
 	wlan_objmgr_peer_release_ref(peer, WLAN_MGMT_NB_ID);
 	if (status != QDF_STATUS_SUCCESS) {

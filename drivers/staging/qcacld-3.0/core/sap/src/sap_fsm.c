@@ -34,7 +34,6 @@
 /*----------------------------------------------------------------------------
  * Include Files
  * -------------------------------------------------------------------------*/
-#include "wlan_mlme_sta_mon.h"
 #include "sap_internal.h"
 #include <wlan_dfs_tgt_api.h>
 #include <wlan_dfs_utils_api.h>
@@ -2978,12 +2977,6 @@ QDF_STATUS sap_fsm(struct sap_context *sap_ctx, struct sap_sm_event *sap_event)
 		return QDF_STATUS_E_FAILURE;
 	}
 	mac_handle = MAC_HANDLE(mac_ctx);
-	if (msg == eSAP_HDD_STOP_INFRA_BSS) {
-		wlan_mlme_sta_mon_update_begin(mac_ctx->psoc);
-		WRITE_ONCE(sap_ctx->sta_mon_transition, true);
-		wlan_mlme_sta_mon_update_end(mac_ctx->psoc);
-	}
-
 
 	sap_debug("state=%d handle event=%d", state_var, msg);
 
@@ -3729,13 +3722,6 @@ qdf_freq_t sap_indicate_radar(struct sap_context *sap_ctx)
 		sap_err("Invalid MAC context");
 		return 0;
 	}
-
-	/* Publish the transition before changing radar/CSA state, also when
-	 * this callback must defer channel selection to another worker.
-	 */
-	wlan_mlme_sta_mon_update_begin(mac->psoc);
-	WRITE_ONCE(sap_ctx->sta_mon_transition, true);
-	wlan_mlme_sta_mon_update_end(mac->psoc);
 
 	/*
 	 * SAP needs to generate Channel Switch IE

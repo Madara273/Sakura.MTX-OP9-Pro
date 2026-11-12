@@ -918,17 +918,6 @@ QDF_STATUS wlan_mgmt_txrx_init(void);
 QDF_STATUS wlan_mgmt_txrx_deinit(void);
 
 /**
- * wlan_mgmt_txrx_is_idle() - sample whether firmware owns no mgmt descriptors
- * @pdev: active, referenced pdev object
- *
- * The caller must first prevent new submissions. This does not drain TX and
- * does not provide an admission fence by itself.
- *
- * Return: true when the initialized descriptor pool is entirely free
- */
-bool wlan_mgmt_txrx_is_idle(struct wlan_objmgr_pdev *pdev);
-
-/**
  * wlan_mgmt_txrx_mgmt_frame_tx() - transmits mgmt. frame
  * @peer: peer
  * @context: caller component specific context

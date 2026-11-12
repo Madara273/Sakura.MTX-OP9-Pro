@@ -26,7 +26,6 @@
 /* Include Files */
 
 #include <linux/version.h>
-#include "wlan_mlme_sta_mon.h"
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -659,7 +658,7 @@ static int hdd_hostapd_change_mtu(struct net_device *net_dev, int new_mtu)
 }
 
 #ifdef QCA_HT_2040_COEX
-static QDF_STATUS hdd_set_sap_ht2040_mode_admitted(struct hdd_adapter *adapter,
+QDF_STATUS hdd_set_sap_ht2040_mode(struct hdd_adapter *adapter,
 				   uint8_t channel_type)
 {
 	QDF_STATUS qdf_ret_status = QDF_STATUS_E_FAILURE;
@@ -683,22 +682,6 @@ static QDF_STATUS hdd_set_sap_ht2040_mode_admitted(struct hdd_adapter *adapter,
 	}
 	return QDF_STATUS_SUCCESS;
 }
-
-QDF_STATUS hdd_set_sap_ht2040_mode(struct hdd_adapter *adapter,
-				uint8_t channel_type)
-{
-	struct wlan_objmgr_psoc *psoc = adapter->hdd_ctx->psoc;
-	QDF_STATUS status;
-
-	if (!wlan_mlme_sta_mon_admission_begin(psoc))
-		return QDF_STATUS_E_BUSY;
-	wlan_mlme_sta_mon_update_begin(psoc);
-	status = hdd_set_sap_ht2040_mode_admitted(adapter, channel_type);
-	wlan_mlme_sta_mon_update_end(psoc);
-	wlan_mlme_sta_mon_admission_end(psoc);
-	return status;
-}
-
 #endif
 
 /**
@@ -2024,10 +2007,8 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_event *sap_event,
 
 		if (sap_ctx->is_chan_change_inprogress) {
 			hdd_debug("check for possible hw mode change");
-			wlan_mlme_sta_mon_update_begin(hdd_ctx->psoc);
 			status = policy_mgr_set_hw_mode_on_channel_switch(
 				hdd_ctx->psoc, adapter->vdev_id);
-			wlan_mlme_sta_mon_update_end(hdd_ctx->psoc);
 			if (QDF_IS_STATUS_ERROR(status))
 				hdd_debug("set hw mode change not done");
 		}
@@ -2044,7 +2025,6 @@ QDF_STATUS hdd_hostapd_sap_event_cb(struct sap_event *sap_event,
 		 * so once this event gets set, current worker thread might get
 		 * pre-empted by caller thread.
 		 */
-		WRITE_ONCE(sap_ctx->sta_mon_transition, false);
 		qdf_status = qdf_event_set(&hostapd_state->qdf_event);
 		if (!QDF_IS_STATUS_SUCCESS(qdf_status)) {
 			hdd_err("qdf_event_set failed! status: %d", qdf_status);
@@ -2969,7 +2949,7 @@ bool hdd_is_any_sta_connecting(struct hdd_context *hdd_ctx)
 	return false;
 }
 
-static int hdd_softap_set_channel_change_admitted(struct net_device *dev, int target_chan_freq,
+int hdd_softap_set_channel_change(struct net_device *dev, int target_chan_freq,
 				  enum phy_ch_width target_bw, bool forced)
 {
 	QDF_STATUS status;
@@ -3170,43 +3150,6 @@ static int hdd_softap_set_channel_change_admitted(struct net_device *dev, int ta
 
 	return ret;
 }
-
-int hdd_softap_set_channel_change(struct net_device *dev, int target_chan_freq,
-				enum phy_ch_width target_bw, bool forced)
-{
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
-	struct hdd_context *hdd_ctx = adapter->hdd_ctx;
-	struct sap_context *sap;
-	bool user_request, owner;
-	int ret;
-
-	if (!(hdd_ap_monitor_coexist_enabled() ||
-	      hdd_sta_ap_monitor_coexist_enabled()) ||
-	    adapter->device_mode != QDF_SAP_MODE)
-		return hdd_softap_set_channel_change_admitted(dev,
-				target_chan_freq, target_bw, forced);
-	sap = WLAN_HDD_GET_SAP_CTX_PTR(adapter);
-	if (!sap)
-		return -EINVAL;
-	user_request = sap->csa_reason == CSA_REASON_USER_INITIATED;
-	if (user_request && !wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc))
-		return -EBUSY;
-	owner = wlan_mlme_sta_mon_ap_is_owner(hdd_ctx->psoc, adapter->vdev_id);
-	wlan_mlme_sta_mon_update_begin(hdd_ctx->psoc);
-	WRITE_ONCE(sap->sta_mon_transition, true);
-	if (owner && !cds_is_fw_down() && !cds_is_driver_recovering()) {
-		wma_injection_pre_stop_cleanup();
-		if (!wma_injection_coex_is_quiesced())
-			wlan_mlme_sta_mon_fw_timeout(hdd_ctx->psoc, WLAN_INVALID_VDEV_ID);
-	}
-	ret = hdd_softap_set_channel_change_admitted(dev,
-				target_chan_freq, target_bw, forced);
-	wlan_mlme_sta_mon_update_end(hdd_ctx->psoc);
-	if (user_request)
-		wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
-	return ret;
-}
-
 
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
 void hdd_sap_restart_with_channel_switch(struct hdd_adapter *ap_adapter,
@@ -5309,11 +5252,8 @@ int wlan_hdd_cfg80211_start_bss(struct hdd_adapter *adapter,
 	if (ret != 0)
 		return ret;
 
-	/*
-	 * STA + monitor no longer blocks SAP start here. The SAP vdev is
-	 * created and started through the normal policy manager / firmware
-	 * path, which rejects the request if the target cannot host it.
-	 */
+	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc))
+		return -EINVAL;
 
 	ucfg_mlme_get_sap_force_11n_for_11ac(hdd_ctx->psoc,
 					     &sap_force_11n_for_11ac);
@@ -6089,7 +6029,7 @@ int hdd_destroy_acs_timer(struct hdd_adapter *adapter)
  *
  * Return: 0 for success non-zero for failure
  */
-static int __wlan_hdd_cfg80211_stop_ap_admitted(struct wiphy *wiphy,
+static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
 					struct net_device *dev)
 {
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
@@ -6270,27 +6210,6 @@ exit:
 
 	return 0;
 }
-
-static int __wlan_hdd_cfg80211_stop_ap(struct wiphy *wiphy,
-				     struct net_device *dev)
-{
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
-	bool ap_update = adapter->device_mode == QDF_SAP_MODE &&
-		(hdd_ap_monitor_coexist_enabled() || hdd_sta_ap_monitor_coexist_enabled());
-	int ret;
-
-	if (ap_update) {
-		ret = hdd_ap_mon_stop_begin(adapter);
-		if (ret)
-			return ret;
-	}
-	ret = __wlan_hdd_cfg80211_stop_ap_admitted(wiphy, dev);
-	if (ap_update)
-		wlan_mlme_sta_mon_update_end(hdd_ctx->psoc);
-	return ret;
-}
-
 
 /**
  * wlan_hdd_get_channel_bw() - get channel bandwidth
@@ -6998,21 +6917,13 @@ int wlan_hdd_cfg80211_start_ap(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(dev, &vdev_sync);
 	if (errno)
 		return errno;
 
-	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
-		errno = -EBUSY;
-		goto sta_mon_out;
-	}
-
 	errno = __wlan_hdd_cfg80211_start_ap(wiphy, dev, params);
 
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
-sta_mon_out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;

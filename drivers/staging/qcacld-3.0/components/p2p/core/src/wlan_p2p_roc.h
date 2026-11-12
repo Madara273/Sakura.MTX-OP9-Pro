@@ -102,11 +102,7 @@ struct p2p_roc_context {
 	qdf_mc_timer_t roc_timer;
 	enum roc_state roc_state;
 	int32_t id;
-	bool sta_mon_update;
 };
-
-void p2p_sta_mon_roc_begin(struct p2p_roc_context *roc_ctx);
-void p2p_free_roc_context(struct p2p_roc_context *roc_ctx);
 
 /**
  * struct cancel_roc_context - p2p cancel roc context

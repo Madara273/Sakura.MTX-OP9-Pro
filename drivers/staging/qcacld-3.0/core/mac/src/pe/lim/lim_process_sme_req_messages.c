@@ -4395,7 +4395,6 @@ static void __lim_process_sme_set_ht2040_mode(struct mac_context *mac,
 	tUpdateVHTOpMode *pHtOpMode = NULL;
 	uint16_t staId = 0;
 	tpDphHashNode sta = NULL;
-	bool ap_update;
 
 	pe_debug("received Set HT 20/40 mode message");
 	if (!msg_buf) {
@@ -4413,21 +4412,6 @@ static void __lim_process_sme_set_ht2040_mode(struct mac_context *mac,
 		lim_print_mac_addr(mac, pSetHT2040Mode->bssid.bytes, LOGD);
 		return;
 	}
-
-	if (pSetHT2040Mode->cbMode != PHY_SINGLE_CHANNEL_CENTERED &&
-	    pSetHT2040Mode->cbMode != PHY_DOUBLE_CHANNEL_LOW_PRIMARY &&
-	    pSetHT2040Mode->cbMode != PHY_DOUBLE_CHANNEL_HIGH_PRIMARY) {
-		pe_err("Invalid cbMode");
-		return;
-	}
-
-	/* CSR has already accepted this request and updated its channel mode.
-	 * Invalidate before changing the AP, and exclude new monitor snapshots
-	 * until its beacon and peer updates have been submitted.
-	 */
-	ap_update = pe_session->opmode == QDF_SAP_MODE;
-	if (ap_update)
-		wlan_mlme_sta_mon_update_begin(mac->psoc);
 
 	pe_debug("Update session entry for cbMod=%d",
 		pSetHT2040Mode->cbMode);
@@ -4456,7 +4440,7 @@ static void __lim_process_sme_set_ht2040_mode(struct mac_context *mac,
 		break;
 	default:
 		pe_err("Invalid cbMode");
-		goto out;
+		return;
 	}
 
 	/* Update beacon */
@@ -4473,7 +4457,7 @@ static void __lim_process_sme_set_ht2040_mode(struct mac_context *mac,
 		if (sta->valid && sta->htSupportedChannelWidthSet) {
 			pHtOpMode = qdf_mem_malloc(sizeof(tUpdateVHTOpMode));
 			if (!pHtOpMode)
-				goto out;
+				return;
 			pHtOpMode->opMode =
 				(pe_session->htSecondaryChannelOffset ==
 				 PHY_SINGLE_CHANNEL_CENTERED) ?
@@ -4492,7 +4476,7 @@ static void __lim_process_sme_set_ht2040_mode(struct mac_context *mac,
 							    &msg))) {
 				pe_err("Not able to post WMA_UPDATE_OP_MODE message to WMA");
 				qdf_mem_free(pHtOpMode);
-				goto out;
+				return;
 			}
 			pe_debug("Notified FW about OP mode: %d",
 				pHtOpMode->opMode);
@@ -4501,9 +4485,7 @@ static void __lim_process_sme_set_ht2040_mode(struct mac_context *mac,
 			pe_debug("station does not support HT40");
 	}
 
-out:
-	if (ap_update)
-		wlan_mlme_sta_mon_update_end(mac->psoc);
+	return;
 }
 #endif
 
@@ -5667,9 +5649,7 @@ static void lim_process_sme_channel_change_request(struct mac_context *mac_ctx,
 	}
 
 	if (session_entry->curr_op_freq == target_freq &&
-	    session_entry->ch_width == ch_change_req->ch_width &&
-	    session_entry->ch_center_freq_seg0 == ch_change_req->center_freq_seg_0 &&
-	    session_entry->ch_center_freq_seg1 == ch_change_req->center_freq_seg_1) {
+	    session_entry->ch_width == ch_change_req->ch_width) {
 		struct scheduler_msg mon_msg = {0};
 
 		pe_err("Target channel and mode is same as current channel and mode channel freq %d and mode %d",

@@ -357,37 +357,6 @@ QDF_STATUS wlan_mgmt_txrx_deinit(void)
 	return QDF_STATUS_SUCCESS;
 }
 
-/**
- * wlan_mgmt_txrx_is_idle() - sample whether firmware owns no mgmt descriptors
- * @pdev: active, referenced pdev object
- *
- * The caller must first prevent new submissions. This does not drain TX and
- * does not provide an admission fence by itself.
- *
- * Return: true when the initialized descriptor pool is entirely free
- */
-bool wlan_mgmt_txrx_is_idle(struct wlan_objmgr_pdev *pdev)
-{
-	struct mgmt_txrx_priv_pdev_context *ctx;
-	struct mgmt_desc_pool_t *pool;
-	bool idle;
-
-	if (!pdev)
-		return false;
-	ctx = wlan_objmgr_pdev_get_comp_private_obj(pdev,
-						 WLAN_UMAC_COMP_MGMT_TXRX);
-	if (!ctx || !ctx->mgmt_desc_pool.pool)
-		return false;
-
-	pool = &ctx->mgmt_desc_pool;
-	qdf_spin_lock_bh(&pool->desc_pool_lock);
-	idle = pool->free_list.max_size &&
-		pool->free_list.count == pool->free_list.max_size;
-	qdf_spin_unlock_bh(&pool->desc_pool_lock);
-
-	return idle;
-}
-
 QDF_STATUS wlan_mgmt_txrx_mgmt_frame_tx(struct wlan_objmgr_peer *peer,
 					void *context,
 					qdf_nbuf_t buf,

@@ -27,7 +27,6 @@
 #include <sir_common.h>
 #include <ani_global.h>
 #include "sme_api.h"
-#include "lim_utils.h"
 #include "csr_inside_api.h"
 #include "sme_inside.h"
 #include "csr_internal.h"
@@ -5167,13 +5166,8 @@ QDF_STATUS sme_vdev_post_vdev_create_setup(mac_handle_t mac_handle,
 	return status;
 
 csr_cleanup_vdev_session:
-	/* Native injection owner unwinds partial creation through FW responses. */
-	if (wlan_vdev_is_injection_helper(vdev))
-		return status;
 	csr_cleanup_vdev_session(mac_ctx, vdev_id);
 cleanup_wma:
-	if (wlan_vdev_is_injection_helper(vdev))
-		return status;
 	wma_cleanup_vdev(vdev);
 	return status;
 }
@@ -5195,8 +5189,7 @@ struct wlan_objmgr_vdev
 		return NULL;
 	}
 
-	if (!wlan_vdev_is_injection_helper(vdev) &&
-	    wlan_objmgr_vdev_try_get_ref(vdev, WLAN_LEGACY_SME_ID) !=
+	if (wlan_objmgr_vdev_try_get_ref(vdev, WLAN_LEGACY_SME_ID) !=
 	    QDF_STATUS_SUCCESS) {
 		wlan_objmgr_vdev_obj_delete(vdev);
 		return NULL;
@@ -5223,10 +5216,6 @@ void sme_vdev_del_resp(uint8_t vdev_id)
 	mac = MAC_CONTEXT(mac_handle);
 	csr_cleanup_vdev_session(mac, vdev_id);
 
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	if (wma_injection_helper_deleted(vdev_id))
-		return;
-#endif
 	if (mac->session_close_cb)
 		mac->session_close_cb(vdev_id);
 }
@@ -5242,13 +5231,6 @@ QDF_STATUS sme_vdev_self_peer_delete_resp(struct del_vdev_params *del_vdev_req)
 		return QDF_STATUS_E_INVAL;
 	}
 
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	if (wma_injection_helper_self_peer_deleted(vdev, del_vdev_req->status)) {
-		status = del_vdev_req->status;
-		qdf_mem_free(del_vdev_req);
-		return status;
-	}
-#endif
 	wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_SME_ID);
 
 	status = del_vdev_req->status;
@@ -5288,22 +5270,12 @@ QDF_STATUS sme_vdev_delete(mac_handle_t mac_handle,
 	 * resulting in the last reference of vdev object and sending the
 	 * vdev_delete to firmware.
 	 */
-	if (wlan_vdev_is_injection_helper(vdev) &&
-	    vdev->obj_state == WLAN_OBJ_STATE_LOGICALLY_DELETED)
-		status = QDF_STATUS_SUCCESS;
-	else
-		status = wlan_objmgr_vdev_obj_delete(vdev);
+	status = wlan_objmgr_vdev_obj_delete(vdev);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		sme_nofl_err("Failed to mark vdev as logical delete %d",
 			     status);
 		return status;
 	}
-
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	if (wlan_vdev_is_injection_helper(vdev) &&
-	    !wma_injection_helper_has_self_peer(vdev))
-		return wma_injection_helper_delete_no_peer(vdev);
-#endif
 
 	del_self_peer = qdf_mem_malloc(sizeof(*del_self_peer));
 	if (!del_self_peer)
@@ -5323,8 +5295,7 @@ QDF_STATUS sme_vdev_delete(mac_handle_t mac_handle,
 
 	if (QDF_IS_STATUS_ERROR(status)) {
 		sme_err("Failed to post vdev selfpeer for vdev:%d", vdev_id);
-		if (!wlan_vdev_is_injection_helper(vdev))
-			wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_SME_ID);
+		wlan_objmgr_vdev_release_ref(vdev, WLAN_LEGACY_SME_ID);
 		qdf_mem_free(del_self_peer);
 	}
 
@@ -11703,39 +11674,6 @@ bool sme_neighbor_middle_of_roaming(mac_handle_t mac_handle, uint8_t sessionId)
 	return val;
 }
 
-bool sme_is_ap_channel_update_pending(mac_handle_t mac_handle,
-				      struct wlan_objmgr_vdev *vdev)
-{
-	struct mac_context *mac = MAC_CONTEXT(mac_handle);
-	struct pe_session *session;
-
-	if (!mac || !vdev)
-		return true;
-	/* PE sessions live in the MAC session array. The caller's epoch detects
-	 * concurrent stop/reuse; compare the referenced native identity as well.
-	 */
-	session = pe_find_session_by_vdev_id(mac, wlan_vdev_get_id(vdev));
-	return !session || READ_ONCE(session->vdev) != vdev ||
-		READ_ONCE(session->opmode) != QDF_SAP_MODE ||
-		READ_ONCE(session->dfsIncludeChanSwIe);
-}
-
-bool sme_is_sta_channel_update_pending(mac_handle_t mac_handle,
-				       struct wlan_objmgr_vdev *vdev)
-{
-	struct mac_context *mac = MAC_CONTEXT(mac_handle);
-	struct pe_session *session;
-
-	if (!mac || !vdev)
-		return true;
-	/* As for AP admission, the caller holds the vdev and checks its epoch. */
-	session = pe_find_session_by_vdev_id(mac, wlan_vdev_get_id(vdev));
-	return !session || READ_ONCE(session->vdev) != vdev ||
-		READ_ONCE(session->opmode) != QDF_STA_MODE ||
-		READ_ONCE(session->gLimSpecMgmt.dot11hChanSwState) !=
-			eLIM_11H_CHANSW_INIT;
-}
-
 bool sme_is_any_session_in_middle_of_roaming(mac_handle_t mac_handle)
 {
 	struct mac_context *mac_ctx = MAC_CONTEXT(mac_handle);
@@ -17380,121 +17318,3 @@ void sme_roam_events_deregister_callback(mac_handle_t mac_handle)
 	sme_roam_events_register_callback(mac_handle, NULL);
 }
 #endif
-
-/* The request and vdev remain pinned even if HDD times out before MC runs. */
-struct sme_ap_tpc_work {
-	mac_handle_t mac_handle;
-	struct wlan_objmgr_vdev *vdev;
-	qdf_event_t done;
-	qdf_atomic_t refs;
-	QDF_STATUS status;
-	bool cancelled;
-};
-
-static void sme_ap_tpc_work_put(struct sme_ap_tpc_work *work)
-{
-	if (!qdf_atomic_dec_and_test(&work->refs))
-		return;
-	wlan_objmgr_vdev_release_ref(work->vdev, WLAN_LEGACY_SME_ID);
-	qdf_event_destroy(&work->done);
-	qdf_mem_free(work);
-}
-
-static QDF_STATUS sme_refresh_ap_tpc_on_mc(struct sme_ap_tpc_work *work)
-{
-	struct mac_context *mac = MAC_CONTEXT(work->mac_handle);
-	struct wlan_objmgr_vdev *vdev = work->vdev;
-	uint8_t vdev_id = wlan_vdev_get_id(vdev);
-	struct pe_session *session;
-	struct vdev_mlme_obj *mlme;
-	struct wlan_lmac_if_reg_tx_ops *tx_ops;
-	QDF_STATUS status = QDF_STATUS_E_FAILURE;
-
-	session = pe_find_session_by_vdev_id(mac, vdev_id);
-	mlme = wlan_vdev_mlme_get_cmpt_obj(vdev);
-	tx_ops = wlan_reg_get_tx_ops(mac->psoc);
-	if (!session || session->vdev != vdev || !mlme || !tx_ops ||
-	    !tx_ops->set_tpc_power || session->opmode != QDF_SAP_MODE ||
-	    session->dfsIncludeChanSwIe)
-		return status;
-	/* MC serialization protects the PE session and its native TPC table. */
-	wlan_mlme_sta_mon_update_begin(mac->psoc);
-	qdf_mem_zero(&mlme->reg_tpc_obj, sizeof(mlme->reg_tpc_obj));
-	lim_calculate_tpc(mac, session);
-	if (mlme->reg_tpc_obj.num_pwr_levels)
-		status = tx_ops->set_tpc_power(mac->psoc, vdev_id,
-					     &mlme->reg_tpc_obj);
-	wlan_mlme_sta_mon_update_end(mac->psoc);
-	return status;
-}
-
-static QDF_STATUS sme_ap_tpc_work_callback(struct scheduler_msg *msg)
-{
-	struct sme_ap_tpc_work *work = msg->bodyptr;
-
-	work->status = READ_ONCE(work->cancelled) ? QDF_STATUS_E_CANCELED :
-						 sme_refresh_ap_tpc_on_mc(work);
-	qdf_event_set(&work->done);
-	msg->bodyptr = NULL;
-	sme_ap_tpc_work_put(work);
-	return QDF_STATUS_SUCCESS;
-}
-
-static QDF_STATUS sme_ap_tpc_work_flush(struct scheduler_msg *msg)
-{
-	struct sme_ap_tpc_work *work = msg->bodyptr;
-
-	work->status = QDF_STATUS_E_CANCELED;
-	qdf_event_set(&work->done);
-	msg->bodyptr = NULL;
-	sme_ap_tpc_work_put(work);
-	return QDF_STATUS_SUCCESS;
-}
-
-/* Called from the HDD process context, outside the MC scheduler thread. */
-QDF_STATUS sme_refresh_ap_tpc(mac_handle_t mac_handle, uint8_t vdev_id)
-{
-	struct mac_context *mac = MAC_CONTEXT(mac_handle);
-	struct sme_ap_tpc_work *work;
-	struct scheduler_msg msg = {0};
-	QDF_STATUS status;
-
-	if (!mac || !wlan_reg_is_ext_tpc_supported(mac->psoc))
-		return QDF_STATUS_E_NOSUPPORT;
-	work = qdf_mem_malloc(sizeof(*work));
-	if (!work)
-		return QDF_STATUS_E_NOMEM;
-	work->vdev = wlan_objmgr_get_vdev_by_id_from_psoc(mac->psoc, vdev_id,
-							WLAN_LEGACY_SME_ID);
-	if (!work->vdev) {
-		qdf_mem_free(work);
-		return QDF_STATUS_E_FAILURE;
-	}
-	status = qdf_event_create(&work->done);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		wlan_objmgr_vdev_release_ref(work->vdev, WLAN_LEGACY_SME_ID);
-		qdf_mem_free(work);
-		return status;
-	}
-	work->mac_handle = mac_handle;
-	work->status = QDF_STATUS_E_FAILURE;
-	qdf_atomic_init(&work->refs);
-	qdf_atomic_set(&work->refs, 2);
-	msg.bodyptr = work;
-	msg.callback = sme_ap_tpc_work_callback;
-	msg.flush_callback = sme_ap_tpc_work_flush;
-	/* OS_IF callbacks run on the same MC serializer as native PE handlers. */
-	status = scheduler_post_message(QDF_MODULE_ID_SME, QDF_MODULE_ID_PE,
-					QDF_MODULE_ID_OS_IF, &msg);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		sme_ap_tpc_work_put(work);
-	} else {
-		status = qdf_wait_for_event_completion(&work->done, 3000);
-		if (QDF_IS_STATUS_SUCCESS(status))
-			status = READ_ONCE(work->status);
-		else
-			WRITE_ONCE(work->cancelled, true);
-	}
-	sme_ap_tpc_work_put(work);
-	return status;
-}

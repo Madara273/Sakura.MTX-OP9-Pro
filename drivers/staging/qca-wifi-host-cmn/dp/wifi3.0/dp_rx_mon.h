@@ -1128,39 +1128,4 @@ dp_rx_mon_init_dbg_ppdu_stats(struct hal_rx_ppdu_info *ppdu_info,
 uint32_t
 dp_mon_dest_srng_drop_for_mac(struct dp_pdev *pdev, uint32_t mac_id);
 #endif
-#if defined(FEATURE_FRAME_INJECTION_SUPPORT) && defined(FEATURE_MONITOR_MODE_SUPPORT)
-static inline bool dp_mon_is_sta_coex(struct dp_soc *soc)
-{
-	uint8_t i;
-
-	for (i = 0; i < MAX_PDEV_CNT; i++)
-		if (soc->pdev_list[i] &&
-		    test_bit(0, &soc->pdev_list[i]->sta_mon_flags))
-			return true;
-	return false;
-}
-
-static inline bool dp_mon_sta_coex_is_paused(struct dp_soc *soc)
-{
-	uint8_t i;
-
-	for (i = 0; i < MAX_PDEV_CNT; i++)
-		if (soc->pdev_list[i] &&
-		    test_bit(1, &soc->pdev_list[i]->sta_mon_flags))
-			return true;
-	return false;
-}
-
-bool dp_mon_sta_coex_rx(struct dp_soc *soc, qdf_nbuf_t nbuf, qdf_nbuf_t *next);
-bool dp_mon_sta_coex_rx_exception(struct dp_soc *soc, struct dp_vdev *helper,
-				 qdf_nbuf_t nbuf, uint8_t *rx_tlv_hdr);
-#else
-static inline bool dp_mon_is_sta_coex(struct dp_soc *soc) { return false; }
-static inline bool dp_mon_sta_coex_is_paused(struct dp_soc *soc) { return false; }
-static inline bool dp_mon_sta_coex_rx(struct dp_soc *soc, qdf_nbuf_t nbuf,
-				    qdf_nbuf_t *next) { return false; }
-static inline bool dp_mon_sta_coex_rx_exception(struct dp_soc *soc,
-	struct dp_vdev *helper, qdf_nbuf_t nbuf, uint8_t *rx_tlv_hdr) { return false; }
-#endif
-
 #endif

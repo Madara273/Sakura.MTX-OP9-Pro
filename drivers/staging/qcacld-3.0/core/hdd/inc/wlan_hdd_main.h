@@ -1245,11 +1245,6 @@ enum qdisc_filter_status {
  * @mon_adapter: hdd_adapter of monitor mode.
  */
 struct hdd_adapter {
-	bool sta_mon_coexist;
-	bool sta_mon_handoff_disconnect;
-	bool sta_mon_pm_held;
-	bool sta_mon_stop_failed;
-	bool sta_mon_module_held;
 	/* Magic cookie for adapter sanity verification.  Note that this
 	 * needs to be at the beginning of the private data structure so
 	 * that it will exist at the beginning of dev->priv and hence
@@ -2264,18 +2259,6 @@ struct hdd_context {
 	enum hdd_work_status monitor_restore_work_status;
 	char monitor_restore_iface[IFNAMSIZ];
 	bool monitor_restore_pending;
-#endif
-	struct qdf_delayed_work sta_mon_stop_work;
-	bool sta_mon_work_initialized;
-	bool sta_mon_shutdown_blocked;
-#ifdef FEATURE_WLAN_SCAN_PNO
-	/* One cfg80211 PNO request may wait for native exclusive ownership. */
-	struct mutex sta_mon_pno_lock;
-	struct qdf_delayed_work sta_mon_pno_work;
-	struct pno_scan_req_params *sta_mon_pno_req;
-	struct net_device *sta_mon_pno_dev;
-	uint64_t sta_mon_pno_reqid;
-	bool sta_mon_pno_initialized;
 #endif
 };
 
@@ -5074,16 +5057,5 @@ void wlan_hdd_set_pm_qos_request(struct hdd_context *hdd_ctx,
  * Return: none
  */
 void hdd_update_multicast_list(struct wlan_objmgr_vdev *vdev);
-
-bool hdd_sta_monitor_coexist_enabled(void);
-bool hdd_ap_monitor_coexist_enabled(void);
-bool hdd_sta_ap_monitor_coexist_enabled(void);
-bool hdd_monitor_coexist_enabled(void);
-int hdd_ap_mon_stop_begin(struct hdd_adapter *adapter);
-bool hdd_sta_mon_prepare_stop(struct hdd_context *hdd_ctx);
-int hdd_sta_mon_get_channel(struct hdd_adapter *adapter,
-			    struct wlan_channel *channel);
-int hdd_sta_mon_set_channel(struct hdd_adapter *adapter,
-			    const struct wlan_channel *channel);
 
 #endif /* end #if !defined(WLAN_HDD_MAIN_H) */

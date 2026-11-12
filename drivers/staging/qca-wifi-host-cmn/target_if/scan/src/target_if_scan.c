@@ -302,17 +302,13 @@ target_if_pno_start(struct wlan_objmgr_psoc *psoc,
 	}
 
 	status = wmi_unified_pno_start_cmd(wmi_handle, req);
-	if (QDF_IS_STATUS_ERROR(status) || !req->mawc_params.enable)
-		return status;
+	if (status == QDF_STATUS_SUCCESS) {
+		if (req->mawc_params.enable)
+			status = wmi_unified_nlo_mawc_cmd(wmi_handle,
+							  &req->mawc_params);
+	}
 
-	/* NLO is already enabled. Keep that success visible to callers so a
-	 * failed optional MAWC update cannot leave a running PNO untracked.
-	 */
-	status = wmi_unified_nlo_mawc_cmd(wmi_handle, &req->mawc_params);
-	if (QDF_IS_STATUS_ERROR(status))
-		target_if_err("PNO started, but MAWC configuration failed: %d", status);
-
-	return QDF_STATUS_SUCCESS;
+	return status;
 }
 
 static QDF_STATUS

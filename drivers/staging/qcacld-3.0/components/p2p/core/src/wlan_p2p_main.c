@@ -20,7 +20,6 @@
  * DOC: This file contains main P2P function definitions
  */
 
-#include "wlan_mlme_sta_mon.h"
 #include <scheduler_api.h>
 #include <wlan_objmgr_psoc_obj.h>
 #include <wlan_objmgr_global_obj.h>
@@ -222,9 +221,6 @@ static QDF_STATUS p2p_vdev_obj_create_notification(
 	p2p_vdev_obj->vdev = vdev;
 	p2p_vdev_obj->noa_status = true;
 	p2p_vdev_obj->non_p2p_peer_count = 0;
-#ifdef FEATURE_P2P_LISTEN_OFFLOAD
-	qdf_spinlock_create(&p2p_vdev_obj->sta_mon_lo_lock);
-#endif
 	p2p_init_random_mac_vdev(p2p_vdev_obj);
 
 	status = wlan_objmgr_vdev_component_obj_attach(vdev,
@@ -232,9 +228,6 @@ static QDF_STATUS p2p_vdev_obj_create_notification(
 				QDF_STATUS_SUCCESS);
 	if (status != QDF_STATUS_SUCCESS) {
 		p2p_deinit_random_mac_vdev(p2p_vdev_obj);
-#ifdef FEATURE_P2P_LISTEN_OFFLOAD
-		qdf_spinlock_destroy(&p2p_vdev_obj->sta_mon_lo_lock);
-#endif
 		qdf_mem_free(p2p_vdev_obj);
 		p2p_err("Failed to attach p2p component to vdev, %d",
 			status);
@@ -301,12 +294,6 @@ static QDF_STATUS p2p_vdev_obj_destroy_notification(
 	if (p2p_vdev_obj->noa_info)
 		qdf_mem_free(p2p_vdev_obj->noa_info);
 
-#ifdef FEATURE_P2P_LISTEN_OFFLOAD
-	/* A missing LO_STOPPED event cannot prove the firmware stopped scanning. */
-	if (p2p_vdev_obj->sta_mon_lo_active)
-		p2p_err("Unconfirmed listen offload retains monitor exclusion");
-	qdf_spinlock_destroy(&p2p_vdev_obj->sta_mon_lo_lock);
-#endif
 	qdf_mem_free(p2p_vdev_obj);
 
 	return QDF_STATUS_SUCCESS;
@@ -1033,7 +1020,6 @@ QDF_STATUS p2p_process_evt(struct scheduler_msg *msg)
 QDF_STATUS p2p_msg_flush_callback(struct scheduler_msg *msg)
 {
 	struct tx_action_context *tx_action;
-	struct p2p_roc_context *roc_ctx;
 
 	if (!msg || !(msg->bodyptr)) {
 		p2p_err("invalid msg");
@@ -1042,11 +1028,6 @@ QDF_STATUS p2p_msg_flush_callback(struct scheduler_msg *msg)
 
 	p2p_debug("flush msg, type:%d", msg->type);
 	switch (msg->type) {
-	case P2P_ROC_REQ:
-		roc_ctx = msg->bodyptr;
-		qdf_idr_remove(&roc_ctx->p2p_soc_obj->p2p_idr, roc_ctx->id);
-		p2p_free_roc_context(roc_ctx);
-		break;
 	case P2P_MGMT_TX:
 		tx_action = (struct tx_action_context *)msg->bodyptr;
 		qdf_mem_free(tx_action->buf);
@@ -1186,47 +1167,12 @@ bool p2p_check_oui_and_force_1x1(uint8_t *assoc_ie, uint32_t assoc_ie_len)
 }
 
 #ifdef FEATURE_P2P_LISTEN_OFFLOAD
-QDF_STATUS p2p_sta_mon_lo_begin(struct wlan_objmgr_vdev *vdev)
-{
-	struct p2p_vdev_priv_obj *obj;
-	QDF_STATUS status = QDF_STATUS_E_BUSY;
-
-	obj = wlan_objmgr_vdev_get_comp_private_obj(vdev, WLAN_UMAC_COMP_P2P);
-	if (!obj)
-		return QDF_STATUS_E_INVAL;
-	qdf_spin_lock_bh(&obj->sta_mon_lo_lock);
-	if (!obj->sta_mon_lo_active) {
-		wlan_mlme_sta_mon_update_begin(wlan_vdev_get_psoc(vdev));
-		obj->sta_mon_lo_active = true;
-		status = QDF_STATUS_SUCCESS;
-	}
-	qdf_spin_unlock_bh(&obj->sta_mon_lo_lock);
-
-	return status;
-}
-
-void p2p_sta_mon_lo_end(struct wlan_objmgr_vdev *vdev)
-{
-	struct p2p_vdev_priv_obj *obj;
-
-	obj = wlan_objmgr_vdev_get_comp_private_obj(vdev, WLAN_UMAC_COMP_P2P);
-	if (!obj)
-		return;
-	qdf_spin_lock_bh(&obj->sta_mon_lo_lock);
-	if (obj->sta_mon_lo_active) {
-		obj->sta_mon_lo_active = false;
-		wlan_mlme_sta_mon_update_end(wlan_vdev_get_psoc(vdev));
-	}
-	qdf_spin_unlock_bh(&obj->sta_mon_lo_lock);
-}
-
 QDF_STATUS p2p_process_lo_stop(
 	struct p2p_lo_stop_event *lo_stop_event)
 {
 	struct p2p_lo_event *lo_evt;
 	struct p2p_soc_priv_obj *p2p_soc_obj;
 	struct p2p_start_param *start_param;
-	struct wlan_objmgr_vdev *vdev;
 
 	if (!lo_stop_event) {
 		p2p_err("invalid lo stop event");
@@ -1244,14 +1190,6 @@ QDF_STATUS p2p_process_lo_stop(
 	p2p_debug("vdev_id %d, reason %d",
 		lo_evt->vdev_id, lo_evt->reason_code);
 
-	if (p2p_soc_obj) {
-		vdev = wlan_objmgr_get_vdev_by_id_from_psoc(
-				p2p_soc_obj->soc, lo_evt->vdev_id, WLAN_P2P_ID);
-		if (vdev) {
-			p2p_sta_mon_lo_end(vdev);
-			wlan_objmgr_vdev_release_ref(vdev, WLAN_P2P_ID);
-		}
-	}
 	if (!p2p_soc_obj || !(p2p_soc_obj->start_param)) {
 		p2p_err("Invalid p2p soc object or start parameters");
 		qdf_mem_free(lo_evt);

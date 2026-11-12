@@ -1825,13 +1825,6 @@ bool sme_neighbor_middle_of_roaming(mac_handle_t mac_handle,
  */
 bool sme_is_any_session_in_middle_of_roaming(mac_handle_t mac_handle);
 
-/* Caller holds the real AP vdev reference and validates its MLME epoch. */
-bool sme_is_ap_channel_update_pending(mac_handle_t mac_handle,
-				      struct wlan_objmgr_vdev *vdev);
-/* Includes the upstream CSA policy interval before native vdev restart. */
-bool sme_is_sta_channel_update_pending(mac_handle_t mac_handle,
-				       struct wlan_objmgr_vdev *vdev);
-
 /**
  * sme_send_flush_logs_cmd_to_fw() - Initiate command to FW to flush logs
  *
@@ -4474,5 +4467,4 @@ sme_set_beacon_latency_event_cb(mac_handle_t mac_handle,
 }
 #endif
 
-QDF_STATUS sme_refresh_ap_tpc(mac_handle_t mac_handle, uint8_t vdev_id);
 #endif /* #if !defined( __SME_API_H ) */

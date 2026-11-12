@@ -7495,15 +7495,9 @@ QDF_STATUS dp_reset_monitor_mode(struct cdp_soc_t *soc_hdl,
 
 	qdf_spin_lock_bh(&pdev->mon_lock);
 
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	if (test_bit(0, &pdev->sta_mon_flags))
-		set_bit(1, &pdev->sta_mon_flags);
-#endif
-	status = dp_soc_config_full_mon_mode(pdev, DP_FULL_MON_DISABLE);
-	if (QDF_IS_STATUS_ERROR(status))
-		goto unlock;
+	dp_soc_config_full_mon_mode(pdev, DP_FULL_MON_DISABLE);
 	pdev->monitor_vdev = NULL;
-	/* Keep configured state until detached monitor filters are reset. */
+	pdev->monitor_configured = false;
 
 	/*
 	 * Lite monitor mode, smart monitor mode and monitor
@@ -7511,7 +7505,7 @@ QDF_STATUS dp_reset_monitor_mode(struct cdp_soc_t *soc_hdl,
 	 */
 	if (pdev->mcopy_mode) {
 #if defined(FEATURE_PERPKT_INFO)
-		pdev->mcopy_mode = M_COPY_DISABLED;
+		dp_pdev_disable_mcopy_code(pdev);
 		dp_mon_filter_reset_mcopy_mode(pdev);
 #endif /* FEATURE_PERPKT_INFO */
 	} else if (special_monitor) {
@@ -7528,11 +7522,8 @@ QDF_STATUS dp_reset_monitor_mode(struct cdp_soc_t *soc_hdl,
 			  FL("Failed to reset monitor filters"));
 	}
 
-	if (QDF_IS_STATUS_SUCCESS(status))
-		pdev->monitor_configured = false;
-unlock:
 	qdf_spin_unlock_bh(&pdev->mon_lock);
-	return status;
+	return QDF_STATUS_SUCCESS;
 }
 
 /**
@@ -7682,11 +7673,6 @@ dp_refresh_monitor_mode(struct cdp_soc_t *dp_soc, uint8_t pdev_id,
 		return QDF_STATUS_E_INVAL;
 	qdf_spin_lock_bh(&pdev->mon_lock);
 	configured = pdev->monitor_configured;
-	if (configured && (!pdev->monitor_vdev ||
-	    pdev->monitor_vdev->vdev_id != vdev_id)) {
-		qdf_spin_unlock_bh(&pdev->mon_lock);
-		return QDF_STATUS_E_INVAL;
-	}
 	if (configured)
 		dp_mon_filter_setup_mon_mode(pdev);
 	qdf_spin_unlock_bh(&pdev->mon_lock);

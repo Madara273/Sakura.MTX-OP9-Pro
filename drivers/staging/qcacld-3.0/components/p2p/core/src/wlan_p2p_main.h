@@ -330,17 +330,7 @@ struct p2p_vdev_priv_obj {
 	qdf_spinlock_t random_mac_lock;
 	struct action_frame_random_mac random_mac[MAX_RANDOM_MAC_ADDRS];
 	struct p2p_set_mac_filter_req pending_req;
-#ifdef FEATURE_P2P_LISTEN_OFFLOAD
-	qdf_spinlock_t sta_mon_lo_lock;
-	bool sta_mon_lo_active;
-#endif
-
 };
-
-#ifdef FEATURE_P2P_LISTEN_OFFLOAD
-QDF_STATUS p2p_sta_mon_lo_begin(struct wlan_objmgr_vdev *vdev);
-void p2p_sta_mon_lo_end(struct wlan_objmgr_vdev *vdev);
-#endif
 
 /**
  * struct p2p_noa_attr - p2p noa attribute

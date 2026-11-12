@@ -144,9 +144,6 @@ QDF_STATUS ucfg_scan_pno_stop(struct wlan_objmgr_vdev *vdev);
  * Return: true if pno in progress else false.
  */
 bool ucfg_scan_get_pno_in_progress(struct wlan_objmgr_vdev *vdev);
-/* Host-only identity is kept out of the firmware/public request layout. */
-void ucfg_scan_set_pno_reqid(struct wlan_objmgr_vdev *vdev, uint64_t reqid);
-bool ucfg_scan_get_pno_reqid(struct wlan_objmgr_vdev *vdev, uint64_t *reqid);
 
 /**
  * ucfg_scan_get_pno_match() - Public API to check if pno matched

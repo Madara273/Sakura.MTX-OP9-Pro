@@ -526,11 +526,6 @@ struct dp_tx_desc_s {
 	uint8_t frm_type;
 	uint8_t pkt_offset;
 	uint8_t  pool_id;
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	/* Native flags are 16 bits; keep post-unmap retirement separately. */
-	bool injection_retired;
-	uint8_t injection_slot;
-#endif
 	struct dp_tx_ext_desc_elem_s *msdu_ext_desc;
 	void *me_buffer;
 	void *tso_desc;
@@ -2254,10 +2249,6 @@ struct dp_pdev {
 
 	/* monitor */
 	bool monitor_configured;
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-	/* Private native monitor handoff publication state. */
-	unsigned long sta_mon_flags;
-#endif
 
 	/* Smart Mesh */
 	bool filter_neighbour_peers;

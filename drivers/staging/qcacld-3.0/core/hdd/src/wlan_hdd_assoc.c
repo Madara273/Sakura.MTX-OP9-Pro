@@ -25,7 +25,6 @@
  */
 
 #include "wlan_hdd_includes.h"
-#include "wlan_mlme_sta_mon.h"
 #include <ani_global.h>
 #include "dot11f.h"
 #include "wlan_hdd_power.h"
@@ -298,16 +297,6 @@ void hdd_conn_set_connection_state(struct hdd_adapter *adapter,
 	/* save the new connection state */
 	if (conn_state == hdd_sta_ctx->conn_info.conn_state)
 		return;
-
-	if (!READ_ONCE(adapter->sta_mon_handoff_disconnect)) {
-		if (conn_state == eConnectionState_Disconnecting ||
-		    conn_state == eConnectionState_NotConnected)
-			wlan_mlme_sta_mon_disconnect_ind(adapter->hdd_ctx->psoc,
-						adapter->vdev_id, false);
-		else
-			wlan_mlme_sta_mon_invalidate(adapter->hdd_ctx->psoc,
-						WLAN_INVALID_VDEV_ID);
-	}
 
 	hdd_nofl_debug("connection state changed %d --> %d for dev %s (vdev %d)",
 		       hdd_sta_ctx->conn_info.conn_state, conn_state,
@@ -4631,11 +4620,6 @@ hdd_sme_roam_callback(void *context, struct csr_roam_info *roam_info,
 
 	sta_ctx = WLAN_HDD_GET_STATION_CTX_PTR(adapter);
 	hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-
-	if (roam_status == eCSR_ROAM_FT_START ||
-	    roam_status == eCSR_ROAM_SHOULD_ROAM ||
-	    roam_status == eCSR_ROAM_NAPI_OFF)
-		wlan_mlme_sta_mon_invalidate(hdd_ctx->psoc, WLAN_INVALID_VDEV_ID);
 
 	MTRACE(qdf_trace(QDF_MODULE_ID_HDD, TRACE_CODE_HDD_RX_SME_MSG,
 				 adapter->vdev_id, roam_status));

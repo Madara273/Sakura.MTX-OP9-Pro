@@ -25,7 +25,6 @@
  */
 
 #include <linux/version.h>
-#include "wlan_mlme_sta_mon.h"
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -725,22 +724,6 @@ static const struct ieee80211_iface_limit
 	},
 };
 
-static const struct ieee80211_iface_limit wlan_hdd_sta_mon_iface_limit[] = {
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_STATION) },
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_MONITOR) },
-};
-
-static const struct ieee80211_iface_limit wlan_hdd_ap_mon_iface_limit[] = {
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_AP) },
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_MONITOR) },
-};
-
-static const struct ieee80211_iface_limit wlan_hdd_sta_ap_mon_iface_limit[] = {
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_STATION) },
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_AP) },
-	{ .max = 1, .types = BIT(NL80211_IFTYPE_MONITOR) },
-};
-
 static struct ieee80211_iface_combination
 	wlan_hdd_iface_combination[] = {
 	/* STA */
@@ -839,53 +822,7 @@ static struct ieee80211_iface_combination
 		.n_limits = ARRAY_SIZE(wlan_hdd_sap_nan_iface_limit),
 		.beacon_int_infra_match = true,
 	},
-	{
-		.limits = wlan_hdd_sta_mon_iface_limit,
-		.max_interfaces = 2,
-		.num_different_channels = 1,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_mon_iface_limit),
-	},
-	{
-		.limits = wlan_hdd_ap_mon_iface_limit,
-		.max_interfaces = 2,
-		.num_different_channels = 1,
-		.n_limits = ARRAY_SIZE(wlan_hdd_ap_mon_iface_limit),
-	},
-	{
-		.limits = wlan_hdd_sta_ap_mon_iface_limit,
-		.max_interfaces = 3,
-		.num_different_channels = 1,
-		.n_limits = ARRAY_SIZE(wlan_hdd_sta_ap_mon_iface_limit),
-		.beacon_int_infra_match = true,
-	},
 };
-
-static struct ieee80211_iface_combination wlan_hdd_selected_iface_combinations[
-	ARRAY_SIZE(wlan_hdd_iface_combination)];
-
-static void hdd_select_monitor_combinations(struct wiphy *wiphy)
-{
-	bool supported = dp_mon_sta_coex_supported(cds_get_context(QDF_MODULE_ID_SOC));
-	unsigned int i, count = 0;
-
-	for (i = 0; i < ARRAY_SIZE(wlan_hdd_iface_combination); i++) {
-		const struct ieee80211_iface_combination *combo =
-			&wlan_hdd_iface_combination[i];
-		if (combo->limits == wlan_hdd_sta_mon_iface_limit &&
-		    !(supported && hdd_sta_monitor_coexist_enabled()))
-			continue;
-		if (combo->limits == wlan_hdd_ap_mon_iface_limit &&
-		    !(supported && hdd_ap_monitor_coexist_enabled()))
-			continue;
-		if (combo->limits == wlan_hdd_sta_ap_mon_iface_limit &&
-		    !(supported && hdd_sta_ap_monitor_coexist_enabled()))
-			continue;
-		wlan_hdd_selected_iface_combinations[count++] = *combo;
-	}
-	wiphy->iface_combinations = wlan_hdd_selected_iface_combinations;
-	wiphy->n_iface_combinations = count;
-}
-
 
 static struct cfg80211_ops wlan_hdd_cfg80211_ops;
 
@@ -18050,7 +17987,9 @@ void wlan_hdd_update_wiphy(struct hdd_context *hdd_ctx)
 					beacon_int_infra_match = true;
 			}
 		}
-		hdd_select_monitor_combinations(wiphy);
+		wiphy->n_iface_combinations =
+			ARRAY_SIZE(wlan_hdd_iface_combination);
+		wiphy->iface_combinations = wlan_hdd_iface_combination;
 	}
 
 	mac_spoofing_enabled = ucfg_scan_is_mac_spoofing_enabled(hdd_ctx->psoc);
@@ -18795,22 +18734,14 @@ static int _wlan_hdd_cfg80211_change_iface(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_trans_start(net_dev, &vdev_sync);
 	if (errno)
 		return errno;
 
-	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
-		errno = -EBUSY;
-		goto sta_mon_out;
-	}
-
 	errno = __wlan_hdd_cfg80211_change_iface(wiphy, net_dev, type,
 						 flags, params);
 
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
-sta_mon_out:
 	osif_vdev_sync_trans_stop(vdev_sync);
 
 	return errno;
@@ -22375,11 +22306,8 @@ static int __wlan_hdd_cfg80211_connect(struct wiphy *wiphy,
 	if (0 != status)
 		return status;
 
-	wlan_mlme_sta_mon_invalidate(hdd_ctx->psoc, WLAN_INVALID_VDEV_ID);
-	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc) &&
-	    !wlan_mlme_sta_mon_can_connect(hdd_ctx->psoc))
-		return wlan_mlme_sta_mon_needs_stop(hdd_ctx->psoc) ?
-			-EBUSY : -EINVAL;
+	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc))
+		return -EINVAL;
 
 	qdf_mutex_acquire(&hdd_ctx->regulatory_status_lock);
 	if (hdd_ctx->is_regulatory_update_in_progress) {
@@ -22493,21 +22421,13 @@ static int wlan_hdd_cfg80211_connect(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(ndev, &vdev_sync);
 	if (errno)
 		return errno;
 
-	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
-		errno = -EBUSY;
-		goto sta_mon_out;
-	}
-
 	errno = __wlan_hdd_cfg80211_connect(wiphy, ndev, req);
 
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
-sta_mon_out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -25028,20 +24948,13 @@ static int wlan_hdd_cfg80211_channel_switch(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(dev, &vdev_sync);
 	if (errno)
 		return errno;
 
-	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
-		errno = -EBUSY;
-		goto out;
-	}
 	errno = __wlan_hdd_cfg80211_channel_switch(wiphy, dev, csa_params);
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
 
-out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -25112,93 +25025,6 @@ int wlan_hdd_change_hw_mode_for_given_chnl(struct hdd_adapter *adapter,
  *
  * Return: 0 success or error code on failure.
  */
-static void
-wlan_hdd_update_chandef(struct cfg80211_chan_def *chandef,
-			enum phy_ch_width ch_width, uint32_t ch_cfreq2,
-			bool is_legacy_phymode)
-{
-	switch (ch_width) {
-	case CH_WIDTH_20MHZ:
-		if (is_legacy_phymode)
-			chandef->width = NL80211_CHAN_WIDTH_20_NOHT;
-		else
-			chandef->width = NL80211_CHAN_WIDTH_20;
-		break;
-	case CH_WIDTH_40MHZ:
-		chandef->width = NL80211_CHAN_WIDTH_40;
-		break;
-	case CH_WIDTH_80MHZ:
-		chandef->width = NL80211_CHAN_WIDTH_80;
-		break;
-	case CH_WIDTH_160MHZ:
-		chandef->width = NL80211_CHAN_WIDTH_160;
-		/* Set center_freq1 to center frequency of complete 160MHz */
-		chandef->center_freq1 = ch_cfreq2;
-		break;
-	case CH_WIDTH_80P80MHZ:
-		chandef->width = NL80211_CHAN_WIDTH_80P80;
-		chandef->center_freq2 = ch_cfreq2;
-		break;
-	case CH_WIDTH_5MHZ:
-		chandef->width = NL80211_CHAN_WIDTH_5;
-		break;
-	case CH_WIDTH_10MHZ:
-		chandef->width = NL80211_CHAN_WIDTH_10;
-		break;
-	default:
-		chandef->width = NL80211_CHAN_WIDTH_20;
-		break;
-	}
-}
-
-static int hdd_sta_mon_check_chandef(struct hdd_adapter *adapter,
-				    const struct cfg80211_chan_def *requested)
-{
-	struct wlan_channel channel, target = {0};
-	struct cfg80211_chan_def bound = {0};
-	bool same;
-	int ret;
-
-	if (!requested || !requested->chan || !cfg80211_chandef_valid(requested))
-		return -EINVAL;
-	ret = hdd_sta_mon_get_channel(adapter, &channel);
-	if (ret)
-		return ret;
-	bound.center_freq1 = channel.ch_cfreq1 ?: channel.ch_freq;
-	wlan_hdd_update_chandef(&bound, channel.ch_width,
-				channel.ch_cfreq2, false);
-
-	same = requested->chan->center_freq == channel.ch_freq &&
-		hdd_map_nl_chan_width(requested->width) == channel.ch_width &&
-		requested->center_freq1 == bound.center_freq1 &&
-		requested->center_freq2 == bound.center_freq2;
-#if defined(WLAN_FEATURE_11BE) && defined(CFG80211_RU_PUNC_CHANDEF)
-	same &= requested->punctured == channel.puncture_bitmap;
-#elif defined(WLAN_FEATURE_11BE)
-	if (channel.puncture_bitmap)
-		return -EOPNOTSUPP;
-#endif
-	if (same)
-		return 0;
-	if (requested->chan->flags & (IEEE80211_CHAN_DISABLED |
-				     IEEE80211_CHAN_NO_IR | IEEE80211_CHAN_RADAR))
-		return -EOPNOTSUPP;
-	target.ch_freq = requested->chan->center_freq;
-	target.ch_ieee = wlan_reg_freq_to_chan(adapter->hdd_ctx->pdev,
-					      target.ch_freq);
-	target.ch_width = hdd_map_nl_chan_width(requested->width);
-	target.ch_cfreq1 = requested->center_freq1;
-	target.ch_cfreq2 = requested->center_freq2;
-	target.ch_freq_seg1 = wlan_reg_freq_to_chan(adapter->hdd_ctx->pdev,
-						   target.ch_cfreq1);
-	target.ch_freq_seg2 = target.ch_cfreq2 ?
-		wlan_reg_freq_to_chan(adapter->hdd_ctx->pdev, target.ch_cfreq2) : 0;
-#if defined(WLAN_FEATURE_11BE) && defined(CFG80211_RU_PUNC_CHANDEF)
-	target.puncture_bitmap = requested->punctured;
-#endif
-	return hdd_sta_mon_set_channel(adapter, &target);
-}
-
 static int __wlan_hdd_cfg80211_set_mon_ch(struct wiphy *wiphy,
 				       struct cfg80211_chan_def *chandef)
 {
@@ -25228,8 +25054,6 @@ static int __wlan_hdd_cfg80211_set_mon_ch(struct wiphy *wiphy,
 	adapter = hdd_get_adapter(hdd_ctx, QDF_MONITOR_MODE);
 	if (!adapter)
 		return -EIO;
-	if (adapter->sta_mon_coexist)
-		return hdd_sta_mon_check_chandef(adapter, chandef);
 
 	hdd_debug("%s: set monitor mode freq %d",
 		  adapter->dev->name, chandef->chan->center_freq);

@@ -229,7 +229,6 @@ struct sap_context {
 	uint8_t sap_sta_id;
 	bool dfs_cac_offload;
 	bool is_chan_change_inprogress;
-	bool sta_mon_transition;
 	qdf_list_t owe_pending_assoc_ind_list;
 	uint32_t freq_before_ch_switch;
 #ifdef WLAN_FEATURE_P2P_P2P_STA
