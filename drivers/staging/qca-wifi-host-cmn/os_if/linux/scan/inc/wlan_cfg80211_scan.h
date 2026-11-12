@@ -189,13 +189,6 @@ struct wlan_cfg80211_inform_bss {
 
 
 #ifdef FEATURE_WLAN_SCAN_PNO
-/* prepare() transfers a validated, value-owned request to the caller. */
-int wlan_cfg80211_sched_scan_prepare(struct wlan_objmgr_vdev *vdev,
-		struct cfg80211_sched_scan_request *request,
-		uint8_t scan_backoff_multiplier, struct pno_scan_req_params **out);
-/* Caller holds radio admission across this operation. */
-int wlan_cfg80211_sched_scan_submit(struct wlan_objmgr_vdev *vdev,
-				   struct pno_scan_req_params *req);
 /**
  * wlan_cfg80211_sched_scan_start() - cfg80211 scheduled scan(pno) start
  * @vdev: vdev pointer

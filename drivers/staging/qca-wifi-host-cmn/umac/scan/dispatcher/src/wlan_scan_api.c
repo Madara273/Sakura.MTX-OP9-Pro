@@ -23,7 +23,6 @@
 
 #include "cfg_ucfg_api.h"
 #include "wlan_scan_api.h"
-#include "wlan_mlme_sta_mon.h"
 #include "../../core/src/wlan_scan_manager.h"
 
 void wlan_scan_cfg_get_passive_dwelltime(struct wlan_objmgr_psoc *psoc,
@@ -348,39 +347,8 @@ qdf_time_t wlan_scan_get_aging_time(struct wlan_objmgr_psoc *psoc)
 	return scan_obj->scan_def.scan_cache_aging_time;
 }
 
-static QDF_STATUS sta_mon_scan_start_req(struct scheduler_msg *msg)
-{
-	struct scan_start_request *req = msg->bodyptr;
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(req->vdev);
-	QDF_STATUS status;
-
-	/* scm_scan_start_req may release the request's last vdev reference. */
-	status = wlan_objmgr_psoc_try_get_ref(psoc, WLAN_SCAN_ID);
-	if (QDF_IS_STATUS_ERROR(status)) {
-		wlan_mlme_sta_mon_update_end(psoc);
-		wlan_mlme_sta_mon_admission_end(psoc);
-		return scm_scan_start_flush_callback(msg);
-	}
-	status = scm_scan_start_req(msg);
-	wlan_mlme_sta_mon_update_end(psoc);
-	wlan_mlme_sta_mon_admission_end(psoc);
-	wlan_objmgr_psoc_release_ref(psoc, WLAN_SCAN_ID);
-	return status;
-}
-
-static QDF_STATUS sta_mon_scan_start_flush(struct scheduler_msg *msg)
-{
-	struct scan_start_request *req = msg->bodyptr;
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(req->vdev);
-
-	wlan_mlme_sta_mon_update_end(psoc);
-	wlan_mlme_sta_mon_admission_end(psoc);
-	return scm_scan_start_flush_callback(msg);
-}
-
 QDF_STATUS wlan_scan_start(struct scan_start_request *req)
 {
-	struct wlan_objmgr_psoc *psoc;
 	struct scheduler_msg msg = {0};
 	QDF_STATUS status;
 
@@ -391,14 +359,8 @@ QDF_STATUS wlan_scan_start(struct scan_start_request *req)
 		return QDF_STATUS_E_NULL_VALUE;
 	}
 
-	psoc = wlan_vdev_get_psoc(req->vdev);
-	if (!wlan_mlme_sta_mon_admission_begin(psoc)) {
-		scm_scan_free_scan_request_mem(req);
-		return QDF_STATUS_E_BUSY;
-	}
 	if (!scm_is_scan_allowed(req->vdev)) {
 		scm_err_rl("scan disabled, rejecting the scan req");
-		wlan_mlme_sta_mon_admission_end(psoc);
 		scm_scan_free_scan_request_mem(req);
 		return QDF_STATUS_E_AGAIN;
 	}
@@ -411,23 +373,18 @@ QDF_STATUS wlan_scan_start(struct scan_start_request *req)
 	status = wlan_objmgr_vdev_try_get_ref(req->vdev, WLAN_SCAN_ID);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		scm_info("unable to get reference");
-		wlan_mlme_sta_mon_admission_end(psoc);
 		scm_scan_free_scan_request_mem(req);
 		return status;
 	}
 
 	msg.bodyptr = req;
-	msg.callback = sta_mon_scan_start_req;
-	msg.flush_callback = sta_mon_scan_start_flush;
-	/* The scheduler callback owns admission until scan serialization. */
-	wlan_mlme_sta_mon_update_begin(psoc);
+	msg.callback = scm_scan_start_req;
+	msg.flush_callback = scm_scan_start_flush_callback;
 
 	status = scheduler_post_message(QDF_MODULE_ID_OS_IF,
 					QDF_MODULE_ID_SCAN,
 					QDF_MODULE_ID_OS_IF, &msg);
 	if (QDF_IS_STATUS_ERROR(status)) {
-		wlan_mlme_sta_mon_update_end(psoc);
-		wlan_mlme_sta_mon_admission_end(psoc);
 		wlan_objmgr_vdev_release_ref(req->vdev, WLAN_SCAN_ID);
 		scm_scan_free_scan_request_mem(req);
 	}

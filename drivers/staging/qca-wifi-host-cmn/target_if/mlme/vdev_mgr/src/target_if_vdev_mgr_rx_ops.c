@@ -28,7 +28,6 @@
 #include <wlan_vdev_mgr_tgt_if_tx_defs.h>
 #include <wmi_unified_param.h>
 #include <wlan_mlme_dbg.h>
-#include <wlan_mlme_sta_mon.h>
 #include <target_if.h>
 #include <wlan_vdev_mlme_main.h>
 #include <wmi_unified_vdev_api.h>
@@ -48,28 +47,6 @@ void target_if_vdev_mgr_handle_recovery(struct wlan_objmgr_psoc *psoc,
 	else
 		mlme_nofl_debug("PSOC_%d VDEV_%d: Panic not allowed",
 				wlan_psoc_get_id(psoc), vdev_id);
-}
-
-static void target_if_injection_timeout(struct wlan_objmgr_psoc *psoc,
-					uint8_t vdev_id)
-{
-	struct wlan_objmgr_vdev *vdev;
-
-	/* A monitor DELETE timeout can outlive its objmgr object. */
-	wlan_mlme_sta_mon_fw_timeout(psoc, vdev_id);
-	/* DELETE retains a logically deleted helper until the real FW response. */
-	vdev = wlan_objmgr_get_vdev_by_id_from_psoc_no_state(
-			psoc, vdev_id, WLAN_VDEV_TARGET_IF_ID);
-	if (!vdev)
-		return;
-	if (wlan_vdev_is_injection_helper(vdev)) {
-		wlan_vdev_obj_lock(vdev);
-		WRITE_ONCE(vdev->vdev_objmgr.c_flags,
-			   vdev->vdev_objmgr.c_flags |
-			   WLAN_VDEV_C_INJECTION_FW_UNCERTAIN);
-		wlan_vdev_obj_unlock(vdev);
-	}
-	wlan_objmgr_vdev_release_ref(vdev, WLAN_VDEV_TARGET_IF_ID);
 }
 
 void target_if_vdev_mgr_rsp_timer_cb(void *arg)
@@ -141,7 +118,6 @@ void target_if_vdev_mgr_rsp_timer_cb(void *arg)
 			recovery_reason = QDF_VDEV_RESTART_RESPONSE_TIMED_OUT;
 		}
 
-		target_if_injection_timeout(psoc, vdev_id);
 		target_if_vdev_mgr_rsp_timer_stop(psoc, vdev_rsp, rsp_pos);
 		target_if_vdev_mgr_handle_recovery(psoc, vdev_id,
 						   recovery_reason, rsp_pos);
@@ -152,8 +128,6 @@ void target_if_vdev_mgr_rsp_timer_cb(void *arg)
 		stop_rsp.vdev_id = vdev_id;
 		recovery_reason = QDF_VDEV_STOP_RESPONSE_TIMED_OUT;
 
-		/* This synthetic response has no status field of its own. */
-		target_if_injection_timeout(psoc, vdev_id);
 		target_if_vdev_mgr_rsp_timer_stop(psoc, vdev_rsp, rsp_pos);
 		target_if_vdev_mgr_handle_recovery(psoc, vdev_id,
 						   recovery_reason, rsp_pos);
@@ -163,7 +137,6 @@ void target_if_vdev_mgr_rsp_timer_cb(void *arg)
 		del_rsp.vdev_id = vdev_id;
 		rsp_pos = DELETE_RESPONSE_BIT;
 		recovery_reason = QDF_VDEV_DELETE_RESPONSE_TIMED_OUT;
-		target_if_injection_timeout(psoc, vdev_id);
 		target_if_vdev_mgr_rsp_timer_stop(psoc, vdev_rsp, rsp_pos);
 		target_if_vdev_mgr_handle_recovery(psoc, vdev_id,
 						   recovery_reason, rsp_pos);

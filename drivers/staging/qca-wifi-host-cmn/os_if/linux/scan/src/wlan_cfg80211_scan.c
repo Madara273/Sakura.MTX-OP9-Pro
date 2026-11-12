@@ -256,7 +256,6 @@ static void wlan_cfg80211_pno_callback(struct wlan_objmgr_vdev *vdev,
 {
 	struct wlan_objmgr_pdev *pdev;
 	struct pdev_osif_priv *pdev_ospriv;
-	uint64_t reqid;
 
 	if (event->type != SCAN_EVENT_TYPE_NLO_COMPLETE)
 		return;
@@ -274,8 +273,7 @@ static void wlan_cfg80211_pno_callback(struct wlan_objmgr_vdev *vdev,
 		osif_err("pdev_ospriv is NULL");
 		return;
 	}
-	if (ucfg_scan_get_pno_reqid(vdev, &reqid))
-		wlan_cfg80211_sched_scan_results(pdev_ospriv->wiphy, reqid);
+	wlan_cfg80211_sched_scan_results(pdev_ospriv->wiphy, 0);
 }
 
 #ifdef WLAN_POLICY_MGR_ENABLE
@@ -415,9 +413,9 @@ static uint32_t wlan_config_sched_scan_start_delay(
 #endif /*(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)) */
 #endif /* FEATURE_WLAN_SCAN_PNO */
 
-int wlan_cfg80211_sched_scan_prepare(struct wlan_objmgr_vdev *vdev,
-		struct cfg80211_sched_scan_request *request,
-		uint8_t scan_backoff_multiplier, struct pno_scan_req_params **out)
+int wlan_cfg80211_sched_scan_start(struct wlan_objmgr_vdev *vdev,
+				   struct cfg80211_sched_scan_request *request,
+				   uint8_t scan_backoff_multiplier)
 {
 	struct pno_scan_req_params *req;
 	int i, j, ret = 0;
@@ -435,7 +433,15 @@ int wlan_cfg80211_sched_scan_prepare(struct wlan_objmgr_vdev *vdev,
 		return -EBUSY;
 	}
 
-	*out = NULL;
+	if (ucfg_scan_get_pdev_status(pdev) !=
+	   SCAN_NOT_IN_PROGRESS) {
+		status = wlan_abort_scan(pdev,
+				wlan_objmgr_pdev_get_pdev_id(pdev),
+				INVAL_VDEV_ID, INVAL_SCAN_ID, true);
+		if (QDF_IS_STATUS_ERROR(status))
+			return -EBUSY;
+	}
+
 	req = qdf_mem_malloc(sizeof(*req));
 	if (!req)
 		return -ENOMEM;
@@ -608,6 +614,8 @@ int wlan_cfg80211_sched_scan_prepare(struct wlan_objmgr_vdev *vdev,
 	wlan_hdd_sched_scan_update_relative_rssi(req, request);
 
 	psoc = wlan_pdev_get_psoc(pdev);
+	ucfg_scan_register_pno_cb(psoc,
+		wlan_cfg80211_pno_callback, NULL);
 	ucfg_scan_get_pno_def_params(vdev, req);
 
 	if (req->scan_random.randomize)
@@ -629,87 +637,14 @@ int wlan_cfg80211_sched_scan_prepare(struct wlan_objmgr_vdev *vdev,
 			   req->networks_list[i].rssi_thresh,
 			   req->networks_list[i].bc_new_type);
 
-	*out = req;
-	return 0;
+	status = ucfg_scan_pno_start(vdev, req);
+	if (QDF_IS_STATUS_ERROR(status)) {
+		osif_err("Failed to enable PNO");
+		ret = -EINVAL;
+		goto error;
+	}
 
 error:
-	qdf_mem_free(req);
-	return ret;
-}
-
-int wlan_cfg80211_sched_scan_submit(struct wlan_objmgr_vdev *vdev,
-				   struct pno_scan_req_params *req)
-{
-	struct wlan_objmgr_pdev *pdev = wlan_vdev_get_pdev(vdev);
-	struct wlan_objmgr_psoc *psoc = wlan_vdev_get_psoc(vdev);
-	struct pdev_osif_priv *ospriv = wlan_pdev_get_ospriv(pdev);
-	QDF_STATUS status;
-	unsigned int i, j, kept;
-	bool allow_dfs = ucfg_scan_is_dfs_chnl_scan_enabled(psoc);
-	bool beaconing = wlan_cfg80211_is_ap_go_present(psoc);
-
-	if (req->vdev != vdev || req->vdev_id != wlan_vdev_get_id(vdev) ||
-	    !ospriv || ucfg_scan_get_pno_in_progress(vdev))
-		return -EBUSY;
-	/* Deferred parameters may outlive a regulatory update. Never restore a
-	 * channel which became disabled or incompatible with current AP policy.
-	 */
-	for (i = 0; i < req->networks_cnt; i++) {
-		struct chan_list *list = &req->networks_list[i].pno_chan_list;
-
-		for (j = 0, kept = 0; j < list->num_chan; j++) {
-			uint32_t freq = list->chan[j].freq;
-			struct ieee80211_channel *chan;
-			bool ok;
-
-			chan = ieee80211_get_channel(ospriv->wiphy, freq);
-			if (!chan || (chan->flags & IEEE80211_CHAN_DISABLED) ||
-			    (!allow_dfs && wlan_reg_is_dfs_for_freq(pdev, freq)))
-				continue;
-			if (beaconing) {
-				status = wlan_cfg80211_is_chan_ok_for_dnbs(psoc,
-								 freq, &ok);
-				if (QDF_IS_STATUS_ERROR(status))
-					return -EINVAL;
-				if (!ok)
-					continue;
-			}
-			list->chan[kept++] = list->chan[j];
-		}
-		if (list->num_chan && !kept)
-			return -EINVAL;
-		list->num_chan = kept;
-	}
-	if (ucfg_scan_get_pdev_status(pdev) != SCAN_NOT_IN_PROGRESS) {
-		status = wlan_abort_scan(pdev, wlan_objmgr_pdev_get_pdev_id(pdev),
-					INVAL_VDEV_ID, CANCEL_HOST_SCAN_ID, true);
-		if (QDF_IS_STATUS_ERROR(status))
-			return -EBUSY;
-	}
-	ucfg_scan_register_pno_cb(psoc, wlan_cfg80211_pno_callback, NULL);
-	status = ucfg_scan_pno_start(vdev, req);
-	if (QDF_IS_STATUS_ERROR(status))
-		osif_err("Failed to enable PNO");
-	return qdf_status_to_os_return(status);
-}
-
-int wlan_cfg80211_sched_scan_start(struct wlan_objmgr_vdev *vdev,
-				   struct cfg80211_sched_scan_request *request,
-				   uint8_t scan_backoff_multiplier)
-{
-	struct pno_scan_req_params *req;
-	int ret;
-
-	ret = wlan_cfg80211_sched_scan_prepare(vdev, request,
-					      scan_backoff_multiplier, &req);
-	if (ret)
-		return ret;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-	ucfg_scan_set_pno_reqid(vdev, request->reqid);
-#else
-	ucfg_scan_set_pno_reqid(vdev, 0);
-#endif
-	ret = wlan_cfg80211_sched_scan_submit(vdev, req);
 	qdf_mem_free(req);
 	return ret;
 }
