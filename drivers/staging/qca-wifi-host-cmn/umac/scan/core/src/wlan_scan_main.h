@@ -229,7 +229,6 @@ struct pdev_scan_info {
 struct scan_vdev_obj {
 	bool pno_match_evt_received;
 	bool pno_in_progress;
-	uint64_t pno_reqid;
 	uint32_t scan_disabled;
 	bool first_scan_done;
 };
