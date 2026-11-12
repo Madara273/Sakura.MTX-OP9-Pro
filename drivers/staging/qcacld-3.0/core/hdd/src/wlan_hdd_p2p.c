@@ -26,7 +26,6 @@
  */
 
 #include "osif_sync.h"
-#include "wlan_mlme_sta_mon.h"
 #include <wlan_hdd_includes.h>
 #include <wlan_hdd_hostapd.h>
 #include <net/cfg80211.h>
@@ -176,9 +175,7 @@ static int __wlan_hdd_cfg80211_remain_on_channel(struct wiphy *wiphy,
 		return -EINVAL;
 	}
 
-	wlan_mlme_sta_mon_invalidate(hdd_ctx->psoc, WLAN_INVALID_VDEV_ID);
-	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc) &&
-	    !wlan_mlme_sta_mon_can_connect(hdd_ctx->psoc))
+	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc))
 		return -EINVAL;
 
 	if (wlan_hdd_validate_vdev_id(adapter->vdev_id))
@@ -208,21 +205,14 @@ int wlan_hdd_cfg80211_remain_on_channel(struct wiphy *wiphy,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 
 	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
 	if (errno)
 		return errno;
 
-	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
-		errno = -EBUSY;
-		goto out;
-	}
 	errno = __wlan_hdd_cfg80211_remain_on_channel(wiphy, wdev, chan,
 						      duration, cookie);
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
 
-out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -406,24 +396,10 @@ int wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 {
 	int errno;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
-	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(wdev->netdev);
 
 	errno = osif_vdev_sync_op_start(wdev->netdev, &vdev_sync);
 	if (errno)
 		return errno;
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
-	if (!wlan_mlme_sta_mon_mgmt_admission_begin(hdd_ctx->psoc,
-		adapter->vdev_id, params->chan ? params->chan->center_freq : 0,
-		params->offchan)) {
-#else
-	if (!wlan_mlme_sta_mon_mgmt_admission_begin(hdd_ctx->psoc,
-		adapter->vdev_id, chan ? chan->center_freq : 0, offchan)) {
-#endif
-		errno = -EBUSY;
-		goto sta_mon_out;
-	}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
 	errno = __wlan_hdd_mgmt_tx(wiphy, wdev, params->chan, params->offchan,
@@ -436,8 +412,6 @@ int wlan_hdd_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 				   dont_wait_for_ack, cookie);
 #endif /* LINUX_VERSION_CODE */
 
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
-sta_mon_out:
 	osif_vdev_sync_op_stop(vdev_sync);
 
 	return errno;
@@ -752,7 +726,9 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 	if (ret)
 		return ERR_PTR(ret);
 
-	/* Allow VIF creation with STA + monitor active, but block it during packet capture. */
+	if (policy_mgr_is_sta_mon_concurrency(hdd_ctx->psoc))
+		return ERR_PTR(-EINVAL);
+
 	if (wlan_hdd_is_mon_concurrency())
 		return ERR_PTR(-EINVAL);
 
@@ -784,8 +760,7 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 	}
 
 	adapter = hdd_get_adapter(hdd_ctx, QDF_STA_MODE);
-	if (adapter && !wlan_hdd_validate_vdev_id(adapter->vdev_id) &&
-	    !(type == NL80211_IFTYPE_MONITOR && hdd_monitor_coexist_enabled())) {
+	if (adapter && !wlan_hdd_validate_vdev_id(adapter->vdev_id)) {
 		vdev = hdd_objmgr_get_vdev(adapter);
 		if (vdev) {
 			if (ucfg_scan_get_vdev_status(vdev) !=
@@ -802,15 +777,14 @@ struct wireless_dev *__wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 
 	adapter = NULL;
 	if (type == NL80211_IFTYPE_MONITOR) {
-		if (hdd_monitor_coexist_enabled() ||
-		    ucfg_mlme_is_sta_mon_conc_supported(hdd_ctx->psoc) ||
+		if (ucfg_mlme_is_sta_mon_conc_supported(hdd_ctx->psoc) ||
 		    ucfg_pkt_capture_get_mode(hdd_ctx->psoc) !=
 						PACKET_CAPTURE_MODE_DISABLE) {
 			ret = wlan_hdd_add_monitor_check(hdd_ctx,
 							 &adapter, name, true,
 							 name_assign_type);
 			if (ret)
-				return ERR_PTR(ret);
+				return ERR_PTR(-EINVAL);
 
 			if (adapter) {
 				hdd_exit();
@@ -890,34 +864,14 @@ _wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
 {
 	struct wireless_dev *wdev;
 	struct osif_vdev_sync *vdev_sync;
-	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 	int errno;
 
 	errno = osif_vdev_sync_create_and_trans(wiphy_dev(wiphy), &vdev_sync);
 	if (errno)
 		return ERR_PTR(errno);
 
-	/* Airmon-ng can let the psoc idle after downing its station.  Restore
-	 * component state before monitor admission queries, and before taking
-	 * the controller admission reference across possible reinitialization.
-	 */
-	if (type == NL80211_IFTYPE_MONITOR) {
-		errno = wlan_hdd_validate_context(hdd_ctx);
-		if (!errno)
-			errno = hdd_trigger_psoc_idle_restart(hdd_ctx);
-		if (errno) {
-			wdev = ERR_PTR(errno);
-			goto destroy_sync;
-		}
-	}
-
-	if (!wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc)) {
-		wdev = ERR_PTR(-EBUSY);
-		goto destroy_sync;
-	}
 	wdev = __wlan_hdd_add_virtual_intf(wiphy, name, name_assign_type,
 					   type, flags, params);
-	wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
 
 	if (IS_ERR_OR_NULL(wdev))
 		goto destroy_sync;
@@ -1048,10 +1002,6 @@ static bool hdd_preserve_station_for_monitor(struct hdd_context *hdd_ctx,
 	monitor = hdd_get_adapter(hdd_ctx, QDF_MONITOR_MODE);
 	if (!monitor || monitor->delete_in_progress)
 		return false;
-	/* An AP lease requires explicit admission; STA-only keeps airmon restore. */
-	if (hdd_sta_ap_monitor_coexist_enabled() && monitor->sta_mon_coexist &&
-	    wlan_mlme_sta_mon_ap_is_owner(hdd_ctx->psoc, WLAN_INVALID_VDEV_ID))
-		return false;
 
 	if (hdd_ctx->monitor_restore_pending &&
 	    qdf_str_cmp(hdd_ctx->monitor_restore_iface, adapter->dev->name))
@@ -1125,16 +1075,6 @@ int __wlan_hdd_del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 	if (errno)
 		return errno;
 
-	if (adapter->sta_mon_coexist) {
-		QDF_STATUS status = hdd_stop_adapter(hdd_ctx, adapter);
-		if (QDF_IS_STATUS_ERROR(status))
-			return qdf_status_to_os_return(status);
-		wlan_hdd_release_intf_addr(hdd_ctx, adapter->mac_addr.bytes);
-		hdd_deinit_adapter(hdd_ctx, adapter, true);
-		hdd_close_adapter(hdd_ctx, adapter, true);
-		return 0;
-	}
-
 	if (adapter->device_mode == QDF_SAP_MODE &&
 	    wlan_sap_is_pre_cac_active(hdd_ctx->mac_handle)) {
 		hdd_clean_up_pre_cac_interface(hdd_ctx);
@@ -1162,77 +1102,28 @@ int wlan_hdd_del_virtual_intf(struct wiphy *wiphy, struct wireless_dev *wdev)
 	struct hdd_adapter *adapter = WLAN_HDD_GET_PRIV_PTR(wdev->netdev);
 	struct hdd_context *hdd_ctx = wiphy_priv(wiphy);
 	bool restore_station;
-	bool coex = adapter->sta_mon_coexist;
-	bool ap_delete = adapter->device_mode == QDF_SAP_MODE &&
-		(hdd_ap_monitor_coexist_enabled() || hdd_sta_ap_monitor_coexist_enabled());
-	bool sta_delete = adapter->device_mode == QDF_STA_MODE &&
-		hdd_sta_ap_monitor_coexist_enabled();
-	bool owner_delete = ap_delete || sta_delete;
 
 	if (hdd_preserve_station_for_monitor(hdd_ctx, adapter))
 		return 0;
-	/* Keep real owners registered while the optional monitor owns resources.
-	 * Holding admission also excludes a new arm throughout their destruction.
-	 */
-	if (owner_delete && !wlan_mlme_sta_mon_admission_begin(hdd_ctx->psoc))
-		return -EBUSY;
 
 	restore_station =
 		wlan_hdd_is_session_type_monitor(adapter->device_mode);
 
 	adapter->delete_in_progress = true;
 	errno = osif_vdev_sync_trans_start_wait(wdev->netdev, &vdev_sync);
-	if (errno) {
-		if (coex || owner_delete)
-			adapter->delete_in_progress = false;
-		if (owner_delete)
-			wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
+	if (errno)
 		return errno;
-	}
 
 	osif_vdev_sync_unregister(wdev->netdev);
 	osif_vdev_sync_wait_for_ops(vdev_sync);
 
 	errno = __wlan_hdd_del_virtual_intf(wiphy, wdev);
 
-	if (errno && (coex || owner_delete)) {
-		osif_vdev_sync_register(wdev->netdev, vdev_sync);
-		adapter->delete_in_progress = false;
-		osif_vdev_sync_trans_stop(vdev_sync);
-		if (owner_delete)
-			wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
-		return errno;
-	}
 	osif_vdev_sync_trans_stop(vdev_sync);
 	osif_vdev_sync_destroy(vdev_sync);
-	if (owner_delete)
-		wlan_mlme_sta_mon_admission_end(hdd_ctx->psoc);
 
-	if (!errno && restore_station && !coex) {
-#ifdef FEATURE_FRAME_INJECTION_SUPPORT
-		struct hdd_adapter *sta_adapter =
-			hdd_get_adapter(hdd_ctx, QDF_STA_MODE);
-
-		/*
-		 * hdd_queue_monitor_station_restore() only acts when
-		 * monitor_restore_pending/monitor_restore_iface are set.
-		 * hdd_preserve_station_for_monitor() sets them, but it is
-		 * only reached by trying to delete the STA adapter while a
-		 * monitor adapter is up -- never by the normal path of
-		 * deleting the monitor adapter itself (e.g. "iw wlan0mon
-		 * del"), so on that path the queued work used to find
-		 * nothing pending and do nothing, leaving the STA adapter
-		 * disconnected with no restore attempt. Set the same state
-		 * here so the existing (already RTNL-safe) restore work
-		 * actually runs for this path too.
-		 */
-		if (sta_adapter) {
-			strscpy(hdd_ctx->monitor_restore_iface,
-				sta_adapter->dev->name, IFNAMSIZ);
-			hdd_ctx->monitor_restore_pending = true;
-		}
+	if (!errno && restore_station) {
 		hdd_queue_monitor_station_restore(hdd_ctx);
-#endif
 	}
 	return errno;
 }

@@ -55,10 +55,6 @@ int wlan_hdd_cfg80211_scan(struct wiphy *wiphy,
 			   struct cfg80211_scan_request *request);
 
 #ifdef FEATURE_WLAN_SCAN_PNO
-QDF_STATUS hdd_sta_mon_pno_init(struct hdd_context *hdd_ctx);
-void hdd_sta_mon_pno_deinit(struct hdd_context *hdd_ctx);
-void hdd_sta_mon_pno_resume(struct hdd_context *hdd_ctx);
-bool hdd_sta_mon_pno_cancel(struct net_device *dev);
 int wlan_hdd_cfg80211_sched_scan_start(struct wiphy *wiphy,
 				       struct net_device *dev,
 				       struct cfg80211_sched_scan_request
@@ -94,16 +90,6 @@ int wlan_hdd_cfg80211_sched_scan_stop(struct wiphy *wiphy,
  */
 int wlan_hdd_sched_scan_stop(struct net_device *dev);
 #else
-static inline QDF_STATUS hdd_sta_mon_pno_init(struct hdd_context *hdd_ctx)
-{
-	return QDF_STATUS_SUCCESS;
-}
-static inline void hdd_sta_mon_pno_deinit(struct hdd_context *hdd_ctx) {}
-static inline void hdd_sta_mon_pno_resume(struct hdd_context *hdd_ctx) {}
-static inline bool hdd_sta_mon_pno_cancel(struct net_device *dev)
-{
-	return false;
-}
 static inline int wlan_hdd_sched_scan_stop(struct net_device *dev)
 {
 	return 0;

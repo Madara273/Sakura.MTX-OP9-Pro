@@ -1445,9 +1445,6 @@ dp_rx_process_rxdma_err(struct dp_soc *soc, qdf_nbuf_t nbuf,
 		return;
 	}
 
-	if (dp_mon_sta_coex_rx_exception(soc, vdev, nbuf, rx_tlv_hdr))
-		return;
-
 	/*
 	 * Advance the packet start pointer by total size of
 	 * pre-header TLV's
@@ -1691,9 +1688,6 @@ dp_rx_err_route_hdl(struct dp_soc *soc, qdf_nbuf_t nbuf,
 		DP_STATS_INC(soc, rx.err.invalid_vdev, 1);
 		goto drop_nbuf;
 	}
-
-	if (dp_mon_sta_coex_rx_exception(soc, vdev, nbuf, rx_tlv_hdr))
-		return;
 
 	/*
 	 * Advance the packet start pointer by total size of
@@ -2792,7 +2786,6 @@ dp_rx_err_mpdu_pop(struct dp_soc *soc, uint32_t mac_id,
 				bm_action = HAL_BM_ACTION_RELEASE_MSDU_LIST;
 			else {
 				for (i = 0; i < num_msdus; i++) {
-					qdf_dma_addr_t buf_paddr;
 					struct dp_rx_desc *rx_desc =
 						dp_rx_cookie_2_va_rxdma_buf(soc,
 							msdu_list.sw_cookie[i]);
@@ -2815,19 +2808,6 @@ dp_rx_err_mpdu_pop(struct dp_soc *soc, uint32_t mac_id,
 						dup_desc_dbg(soc,
 							     ring_desc,
 							     rx_desc);
-						continue;
-					}
-
-					/* A stale cookie can refer to a replenished buffer. */
-					buf_paddr = msdu ?
-						qdf_nbuf_get_frag_paddr(msdu, 0) : 0;
-					if (qdf_unlikely(!msdu ||
-							 msdu_list.paddr[i] != buf_paddr)) {
-						DP_STATS_INC(soc, rx.err.nbuf_sanity_fail, 1);
-						dp_info_rl("RXDMA cookie 0x%x paddr 0x%llx expected 0x%llx",
-							msdu_list.sw_cookie[i],
-							(unsigned long long)msdu_list.paddr[i],
-							(unsigned long long)buf_paddr);
 						continue;
 					}
 
