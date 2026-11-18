@@ -48,7 +48,7 @@
 /* Timeout Delay */
 #define TIMEOUT_US		100
 
-#define MBOX_TOUT_MS		500
+#define MBOX_TOUT_MS		100
 
 struct collapse_vote {
 	struct regmap	*regmap;

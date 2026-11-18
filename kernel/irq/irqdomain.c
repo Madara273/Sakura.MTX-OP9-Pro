@@ -94,7 +94,7 @@ struct fwnode_handle *__irq_domain_alloc_fwnode(unsigned int type, int id,
 	fwid->type = type;
 	fwid->name = n;
 	fwid->pa = pa;
-	fwnode_init(&fwid->fwnode, &irqchip_fwnode_ops);
+	fwid->fwnode.ops = &irqchip_fwnode_ops;
 	return &fwid->fwnode;
 }
 EXPORT_SYMBOL_GPL(__irq_domain_alloc_fwnode);
@@ -124,13 +124,14 @@ static struct irq_domain *__irq_domain_create(struct fwnode_handle *fwnode,
 					      const struct irq_domain_ops *ops,
 					      void *host_data)
 {
+	struct device_node *of_node = to_of_node(fwnode);
 	struct irqchip_fwid *fwid;
 	struct irq_domain *domain;
 
 	static atomic_t unknown_domains;
 
 	domain = kzalloc_node(sizeof(*domain) + (sizeof(unsigned int) * size),
-			      GFP_KERNEL, of_node_to_nid(to_of_node(fwnode)));
+			      GFP_KERNEL, of_node_to_nid(of_node));
 	if (!domain)
 		return NULL;
 
@@ -153,16 +154,30 @@ static struct irq_domain *__irq_domain_create(struct fwnode_handle *fwnode,
 			domain->name = fwid->name;
 			break;
 		}
-	} else if (is_of_node(fwnode) || is_acpi_device_node(fwnode) ||
-		   is_software_node(fwnode)) {
+#ifdef CONFIG_ACPI
+	} else if (is_acpi_device_node(fwnode)) {
+		struct acpi_buffer buf = {
+			.length = ACPI_ALLOCATE_BUFFER,
+		};
+		acpi_handle handle;
+
+		handle = acpi_device_handle(to_acpi_device_node(fwnode));
+		if (acpi_get_name(handle, ACPI_FULL_PATHNAME, &buf) == AE_OK) {
+			domain->name = buf.pointer;
+			domain->flags |= IRQ_DOMAIN_NAME_ALLOCATED;
+		}
+
+		domain->fwnode = fwnode;
+#endif
+	} else if (of_node) {
 		char *name;
 
 		/*
-		 * fwnode paths contain '/', which debugfs is legitimately
+		 * DT paths contain '/', which debugfs is legitimately
 		 * unhappy about. Replace them with ':', which does
 		 * the trick and is not as offensive as '\'...
 		 */
-		name = kasprintf(GFP_KERNEL, "%pfw", fwnode);
+		name = kasprintf(GFP_KERNEL, "%pOF", of_node);
 		if (!name) {
 			kfree(domain);
 			return NULL;
@@ -187,8 +202,7 @@ static struct irq_domain *__irq_domain_create(struct fwnode_handle *fwnode,
 		domain->flags |= IRQ_DOMAIN_NAME_ALLOCATED;
 	}
 
-	fwnode_handle_get(fwnode);
-	fwnode_dev_initialized(fwnode, true);
+	of_node_get(of_node);
 
 	/* Fill structure */
 	INIT_RADIX_TREE(&domain->revmap_tree, GFP_KERNEL);
@@ -269,8 +283,7 @@ void irq_domain_remove(struct irq_domain *domain)
 
 	pr_debug("Removed domain %s\n", domain->name);
 
-	fwnode_dev_initialized(domain->fwnode, false);
-	fwnode_handle_put(domain->fwnode);
+	of_node_put(irq_domain_get_of_node(domain));
 	if (domain->flags & IRQ_DOMAIN_NAME_ALLOCATED)
 		kfree(domain->name);
 	kfree(domain);

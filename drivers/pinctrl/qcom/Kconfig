@@ -7,8 +7,12 @@ config PINCTRL_MSM
 	select PINCONF
 	select GENERIC_PINCONF
 	select GPIOLIB_IRQCHIP
-	select IRQ_DOMAIN_HIERARCHY
-	select IRQ_FASTEOI_HIERARCHY_HANDLERS
+	help
+          This is Qualcomm Technologies, Inc msm platform TLMM
+	  generic driver. This provides interfaces to chipset specific
+	  clients drivers use the TLMM block.
+	  Say yes here to enable Qualcomm TLMM driver.
+
 
 config PINCTRL_APQ8064
 	tristate "Qualcomm APQ8064 pin controller driver"

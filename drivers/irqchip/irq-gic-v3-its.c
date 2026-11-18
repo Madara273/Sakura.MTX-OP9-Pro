@@ -3045,13 +3045,6 @@ static int its_vpe_init(struct its_vpe *vpe)
 
 static void its_vpe_teardown(struct its_vpe *vpe)
 {
-	/*
-	 * If vpt_page is NULL, then its_vpe_init() has failed, and
-	 * there is nothing to do as no resource has been allocated.
-	 */
-	if (vpe->vpt_page == NULL)
-		return;
-
 	its_vpe_db_proxy_unmap(vpe);
 	its_vpe_id_free(vpe->vpe_id);
 	its_free_pending_table(vpe->vpt_page);
@@ -3126,10 +3119,8 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 		set_bit(i, bitmap);
 	}
 
-	if (err) {
-		its_vpe_teardown(vm->vpes[i]);
+	if (err)
 		its_vpe_irq_domain_free(domain, virq, i);
-	}
 
 	return err;
 }
@@ -3684,7 +3675,7 @@ static int __init its_probe_one(struct resource *res,
 
 	err = its_init_domain(handle, its);
 	if (err)
-		goto out_free_collection;
+		goto out_free_tables;
 
 	raw_spin_lock(&its_lock);
 	list_add(&its->entry, &its_nodes);
@@ -3692,8 +3683,6 @@ static int __init its_probe_one(struct resource *res,
 
 	return 0;
 
-out_free_collection:
-	kfree(its->collections);
 out_free_tables:
 	its_free_tables(its);
 out_free_cmd:

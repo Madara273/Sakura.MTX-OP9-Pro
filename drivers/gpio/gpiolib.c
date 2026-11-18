@@ -60,10 +60,8 @@
 static DEFINE_IDA(gpio_ida);
 static dev_t gpio_devt;
 #define GPIO_DEV_MAX 256 /* 256 GPIO chip devices supported */
-static int gpio_bus_match(struct device *dev, struct device_driver *drv);
 static struct bus_type gpio_bus_type = {
 	.name = "gpio",
-	.match = gpio_bus_match,
 };
 
 /*
@@ -1292,7 +1290,13 @@ int gpiochip_add_data_with_key(struct gpio_chip *chip, void *data,
 		gdev->dev.of_node = chip->parent->of_node;
 	}
 
-	of_gpio_dev_init(chip, gdev);
+#ifdef CONFIG_OF_GPIO
+	/* If the gpiochip has an assigned OF node this takes precedence */
+	if (chip->of_node)
+		gdev->dev.of_node = chip->of_node;
+	else
+		chip->of_node = gdev->dev.of_node;
+#endif
 
 	gdev->id = ida_simple_get(&gpio_ida, 0, 0, GFP_KERNEL);
 	if (gdev->id < 0) {
@@ -1871,7 +1875,7 @@ static int gpiochip_hierarchy_irq_domain_alloc(struct irq_domain *d,
 	irq_hw_number_t hwirq;
 	unsigned int type = IRQ_TYPE_NONE;
 	struct irq_fwspec *fwspec = data;
-	void *parent_arg;
+	struct irq_fwspec parent_fwspec;
 	unsigned int parent_hwirq;
 	unsigned int parent_type;
 	struct gpio_irq_chip *girq = &gc->irq;
@@ -1910,27 +1914,24 @@ static int gpiochip_hierarchy_irq_domain_alloc(struct irq_domain *d,
 			    NULL, NULL);
 	irq_set_probe(irq);
 
+	/*
+	 * Create a IRQ fwspec to send up to the parent irqdomain:
+	 * specify the hwirq we address on the parent and tie it
+	 * all together up the chain.
+	 */
+	parent_fwspec.fwnode = d->parent->fwnode;
 	/* This parent only handles asserted level IRQs */
-	parent_arg = girq->populate_parent_alloc_arg(gc, parent_hwirq, parent_type);
-	if (!parent_arg)
-		return -ENOMEM;
-
+	girq->populate_parent_fwspec(gc, &parent_fwspec, parent_hwirq,
+				     parent_type);
 	chip_info(gc, "alloc_irqs_parent for %d parent hwirq %d\n",
 		  irq, parent_hwirq);
 	irq_set_lockdep_class(irq, gc->irq.lock_key, gc->irq.request_key);
-	ret = irq_domain_alloc_irqs_parent(d, irq, 1, parent_arg);
-	/*
-	 * If the parent irqdomain is msi, the interrupts have already
-	 * been allocated, so the EEXIST is good.
-	 */
-	if (irq_domain_is_msi(d->parent) && (ret == -EEXIST))
-		ret = 0;
+	ret = irq_domain_alloc_irqs_parent(d, irq, 1, &parent_fwspec);
 	if (ret)
 		chip_err(gc,
 			 "failed to allocate parent hwirq %d for hwirq %lu\n",
 			 parent_hwirq, hwirq);
 
-	kfree(parent_arg);
 	return ret;
 }
 
@@ -1967,8 +1968,8 @@ static int gpiochip_hierarchy_add_domain(struct gpio_chip *gc)
 	if (!gc->irq.child_offset_to_irq)
 		gc->irq.child_offset_to_irq = gpiochip_child_offset_to_irq_noop;
 
-	if (!gc->irq.populate_parent_alloc_arg)
-		gc->irq.populate_parent_alloc_arg =
+	if (!gc->irq.populate_parent_fwspec)
+		gc->irq.populate_parent_fwspec =
 			gpiochip_populate_parent_fwspec_twocell;
 
 	gpiochip_hierarchy_setup_domain_ops(&gc->irq.child_irq_domain_ops);
@@ -1994,43 +1995,27 @@ static bool gpiochip_hierarchy_is_hierarchical(struct gpio_chip *gc)
 	return !!gc->irq.parent_domain;
 }
 
-void *gpiochip_populate_parent_fwspec_twocell(struct gpio_chip *chip,
+void gpiochip_populate_parent_fwspec_twocell(struct gpio_chip *chip,
+					     struct irq_fwspec *fwspec,
 					     unsigned int parent_hwirq,
 					     unsigned int parent_type)
 {
-	struct irq_fwspec *fwspec;
-
-	fwspec = kmalloc(sizeof(*fwspec), GFP_KERNEL);
-	if (!fwspec)
-		return NULL;
-
-	fwspec->fwnode = chip->irq.parent_domain->fwnode;
 	fwspec->param_count = 2;
 	fwspec->param[0] = parent_hwirq;
 	fwspec->param[1] = parent_type;
-
-	return fwspec;
 }
 EXPORT_SYMBOL_GPL(gpiochip_populate_parent_fwspec_twocell);
 
-void *gpiochip_populate_parent_fwspec_fourcell(struct gpio_chip *chip,
+void gpiochip_populate_parent_fwspec_fourcell(struct gpio_chip *chip,
+					      struct irq_fwspec *fwspec,
 					      unsigned int parent_hwirq,
 					      unsigned int parent_type)
 {
-	struct irq_fwspec *fwspec;
-
-	fwspec = kmalloc(sizeof(*fwspec), GFP_KERNEL);
-	if (!fwspec)
-		return NULL;
-
-	fwspec->fwnode = chip->irq.parent_domain->fwnode;
 	fwspec->param_count = 4;
 	fwspec->param[0] = 0;
 	fwspec->param[1] = parent_hwirq;
 	fwspec->param[2] = 0;
 	fwspec->param[3] = parent_type;
-
-	return fwspec;
 }
 EXPORT_SYMBOL_GPL(gpiochip_populate_parent_fwspec_fourcell);
 
@@ -4945,41 +4930,6 @@ void gpiod_put_array(struct gpio_descs *descs)
 }
 EXPORT_SYMBOL_GPL(gpiod_put_array);
 
-
-static int gpio_bus_match(struct device *dev, struct device_driver *drv)
-{
-	/*
-	 * Only match if the fwnode doesn't already have a proper struct device
-	 * created for it.
-	 */
-	if (dev->fwnode && dev->fwnode->dev != dev)
-		return 0;
-	return 1;
-}
-
-static int gpio_stub_drv_probe(struct device *dev)
-{
-	/*
-	 * The DT node of some GPIO chips have a "compatible" property, but
-	 * never have a struct device added and probed by a driver to register
-	 * the GPIO chip with gpiolib. In such cases, fw_devlink=on will cause
-	 * the consumers of the GPIO chip to get probe deferred forever because
-	 * they will be waiting for a device associated with the GPIO chip
-	 * firmware node to get added and bound to a driver.
-	 *
-	 * To allow these consumers to probe, we associate the struct
-	 * gpio_device of the GPIO chip with the firmware node and then simply
-	 * bind it to this stub driver.
-	 */
-	return 0;
-}
-
-static struct device_driver gpio_stub_drv = {
-	.name = "gpio_stub_drv",
-	.bus = &gpio_bus_type,
-	.probe = gpio_stub_drv_probe,
-};
-
 static int __init gpiolib_dev_init(void)
 {
 	int ret;
@@ -4991,16 +4941,9 @@ static int __init gpiolib_dev_init(void)
 		return ret;
 	}
 
-	if (driver_register(&gpio_stub_drv) < 0) {
-		pr_err("gpiolib: could not register GPIO stub driver\n");
-		bus_unregister(&gpio_bus_type);
-		return ret;
-	}
-
 	ret = alloc_chrdev_region(&gpio_devt, 0, GPIO_DEV_MAX, "gpiochip");
 	if (ret < 0) {
 		pr_err("gpiolib: failed to allocate char dev region\n");
-		driver_unregister(&gpio_stub_drv);
 		bus_unregister(&gpio_bus_type);
 	} else {
 		gpiolib_initialized = true;
