@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2019, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2019,2021 The Linux Foundation. All rights reserved.
  */
 
 #ifndef __LINUX_PINCTRL_MSM_H__

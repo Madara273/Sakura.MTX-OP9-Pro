@@ -107,8 +107,8 @@ struct msm_pingroup {
 
 /**
  * struct msm_dir_conn - TLMM Direct GPIO connect configuration
- * @gpio:      GPIO pin number
- * @irq:       The GIC interrupt that the pin is connected to
+ * @gpio:	GPIO pin number
+ * @irq:	The GIC interrupt that the pin is connected to
  */
 struct msm_dir_conn {
 	int gpio;
@@ -157,11 +157,9 @@ struct msm_gpio_wakeirq_map {
  * @pull_no_keeper: The SoC does not support keeper bias.
  * @wakeirq_map:    The map of wakeup capable GPIOs and the pin at PDC/MPM
  * @nwakeirq_map:   The number of entries in @hierarchy_map
+ * @no_wake_gpios:  The list of non-wakeup capable GPIOs
+ * @n_no_wake_gpios:The number of entries in non-wakeup capable gpios
  * @dir_conn:       An array describing all the pins directly connected to GIC.
- * @wakeirq_dual_edge_errata: If true then GPIOs using the wakeirq_map need
- *                            to be aware that their parent can't handle dual
- *                            edge interrupts.
- * @gpio_func: Which function number is GPIO (usually 0).
  */
 struct msm_pinctrl_soc_data {
 	const struct pinctrl_pin_desc *pins;
@@ -177,10 +175,10 @@ struct msm_pinctrl_soc_data {
 	const int *reserved_gpios;
 	const struct msm_gpio_wakeirq_map *wakeirq_map;
 	unsigned int nwakeirq_map;
-	bool wakeirq_dual_edge_errata;
+	unsigned int *no_wake_gpios;
+	unsigned int n_no_wake_gpios;
 	struct pinctrl_qup *qup_regs;
 	unsigned int nqup_regs;
-	unsigned int gpio_func;
 	const struct msm_spare_tlmm *spare_regs;
 	unsigned int nspare_regs;
 	struct msm_dir_conn *dir_conn;
