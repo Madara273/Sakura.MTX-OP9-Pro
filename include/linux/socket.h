@@ -367,6 +367,19 @@ struct ucred {
 /* IPX options */
 #define IPX_TYPE	1
 
+struct file *do_accept(struct file *file, unsigned file_flags,
+		       struct sockaddr __user *upeer_sockaddr,
+		       int __user *upeer_addrlen, int flags);
+int __sys_connect_file(struct file *file, struct sockaddr_storage *address,
+		       int addrlen, int file_flags);
+int __sys_shutdown_sock(struct socket *sock, int how);
+int __copy_msghdr_from_user(struct msghdr *kmsg,
+			    struct user_msghdr __user *umsg,
+			    struct sockaddr __user **save_addr,
+			    struct iovec __user **uiov, size_t *nsegs);
+int sendmsg_copy_msghdr(struct msghdr *msg,
+			struct user_msghdr __user *umsg, unsigned flags,
+			struct iovec **iov);
 extern int move_addr_to_kernel(void __user *uaddr, int ulen, struct sockaddr_storage *kaddr);
 extern int put_cmsg(struct msghdr*, int level, int type, int len, void *data);
 
@@ -395,12 +408,11 @@ extern int __sys_recvmmsg(int fd, struct mmsghdr __user *mmsg,
 extern int __sys_sendmmsg(int fd, struct mmsghdr __user *mmsg,
 			  unsigned int vlen, unsigned int flags,
 			  bool forbid_cmsg_compat);
-extern long __sys_sendmsg_sock(struct socket *sock,
-			       struct user_msghdr __user *msg,
-			       unsigned int flags);
-extern long __sys_recvmsg_sock(struct socket *sock,
-			       struct user_msghdr __user *msg,
-			       unsigned int flags);
+long __sys_sendmsg_sock(struct socket *sock, struct msghdr *msg,
+			unsigned int flags);
+long __sys_recvmsg_sock(struct socket *sock, struct msghdr *msg,
+			struct user_msghdr __user *umsg,
+			struct sockaddr __user *uaddr, unsigned int flags);
 
 /* helpers which do the actual work for syscalls */
 extern int __sys_recvfrom(int fd, void __user *ubuf, size_t size,
