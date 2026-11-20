@@ -36,4 +36,6 @@ struct open_how {
 					be scoped inside the dirfd
 					(similar to chroot(2)). */
 
+#define RESOLVE_CACHED		0x20 /* Only complete cached resolution. */
+
 #endif /* _UAPI_LINUX_OPENAT2_H */

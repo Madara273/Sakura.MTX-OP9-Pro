@@ -526,21 +526,11 @@ static struct io_wq_work *io_get_next_work(struct io_wqe_acct *acct,
 	return NULL;
 }
 
-static bool io_flush_signals(void)
-{
-	if (test_thread_flag(TIF_NOTIFY_SIGNAL) || current->task_works) {
-		__set_current_state(TASK_RUNNING);
-		tracehook_notify_signal();
-		return true;
-	}
-	return false;
-}
-
 static void io_assign_current_work(struct io_worker *worker,
 				   struct io_wq_work *work)
 {
 	if (work) {
-		io_flush_signals();
+		task_work_run_pending();
 		cond_resched();
 	}
 
@@ -655,7 +645,7 @@ loop:
 		last_timeout = false;
 		__io_worker_idle(wqe, worker);
 		raw_spin_unlock(&wqe->lock);
-		if (io_flush_signals())
+		if (task_work_run_pending())
 			continue;
 		ret = schedule_timeout(WORKER_IDLE_TIMEOUT);
 		if (signal_pending(current)) {
@@ -876,7 +866,7 @@ static bool io_wq_for_each_worker(struct io_wqe *wqe,
 
 static bool io_wq_worker_wake(struct io_worker *worker, void *data)
 {
-	set_notify_signal(worker->task);
+	task_work_notify_signal(worker->task);
 	wake_up_process(worker->task);
 	return false;
 }
@@ -998,7 +988,7 @@ static bool io_wq_worker_cancel(struct io_worker *worker, void *data)
 	spin_lock(&worker->lock);
 	if (worker->cur_work &&
 	    match->fn(worker->cur_work, match->data)) {
-		set_notify_signal(worker->task);
+		task_work_notify_signal(worker->task);
 		match->nr_running++;
 	}
 	spin_unlock(&worker->lock);

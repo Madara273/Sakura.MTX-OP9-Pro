@@ -28,6 +28,12 @@ enum iter_type {
 	ITER_XARRAY = 128,
 };
 
+struct iov_iter_state {
+	size_t iov_offset;
+	size_t count;
+	unsigned long nr_segs;
+};
+
 struct iov_iter {
 	/*
 	 * Bit 0 is the read/write bit, set if we're writing.
@@ -53,6 +59,16 @@ struct iov_iter {
 		loff_t xarray_start;
 	};
 };
+
+static inline void iov_iter_save_state(const struct iov_iter *iter,
+				       struct iov_iter_state *state)
+{
+	state->iov_offset = iter->iov_offset;
+	state->count = iter->count;
+	state->nr_segs = iter->nr_segs;
+}
+
+void iov_iter_restore(struct iov_iter *iter, struct iov_iter_state *state);
 
 static inline enum iter_type iov_iter_type(const struct iov_iter *i)
 {
@@ -281,6 +297,9 @@ bool csum_and_copy_from_iter_full(void *addr, size_t bytes, __wsum *csum, struct
 size_t hash_and_copy_to_iter(const void *addr, size_t bytes, void *hashp,
 		struct iov_iter *i);
 
+ssize_t __import_iovec(int type, const struct iovec __user *uvector,
+		      unsigned nr_segs, unsigned fast_segs, struct iovec **iov,
+		      struct iov_iter *iter, bool compat);
 ssize_t import_iovec(int type, const struct iovec __user * uvector,
 		 unsigned nr_segs, unsigned fast_segs,
 		 struct iovec **iov, struct iov_iter *i);

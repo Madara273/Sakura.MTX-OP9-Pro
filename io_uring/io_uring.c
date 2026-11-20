@@ -458,15 +458,6 @@ struct io_ring_ctx {
 	};
 };
 
-#ifndef __GENKSYMS__
-/*
- * ANDROID ABI HACK
- *
- * See the big comment in the linux/io_uring.h file for details.  This
- * structure definition should NOT be used if __GENKSYMS__ is enabled,
- * as a "fake" structure definition has already been read in the
- * linux/io_uring.h file in order to preserve the Android kernel ABI.
- */
 struct io_uring_task {
 	/* submission side */
 	int			cached_refs;
@@ -483,7 +474,6 @@ struct io_uring_task {
 	struct callback_head	task_work;
 	bool			task_running;
 };
-#endif
 
 /*
  * First field must be the file pointer in all the
@@ -2487,13 +2477,7 @@ static inline bool io_run_task_work(void)
 		__set_current_state(TASK_RUNNING);
 		tracehook_notify_resume(NULL);
 	}
-	if (test_thread_flag(TIF_NOTIFY_SIGNAL) || current->task_works) {
-		__set_current_state(TASK_RUNNING);
-		tracehook_notify_signal();
-		return true;
-	}
-
-	return false;
+	return task_work_run_pending();
 }
 
 /*
@@ -2667,7 +2651,7 @@ static int io_iopoll_check(struct io_ring_ctx *ctx, long min)
 		}
 		ret = io_do_iopoll(ctx, &nr_events, min);
 
-		if (task_sigpending(current)) {
+		if (signal_pending(current)) {
 			ret = -EINTR;
 			goto out;
 		}
@@ -2901,7 +2885,7 @@ static void io_iopoll_req_issued(struct io_kiocb *req)
 
 static bool io_bdev_nowait(struct block_device *bdev)
 {
-	return !bdev || blk_queue_nowait(bdev_get_queue(bdev));
+	return !bdev || queue_is_mq(bdev_get_queue(bdev));
 }
 
 /*
@@ -3932,7 +3916,7 @@ static int io_unlinkat(struct io_kiocb *req, unsigned int issue_flags)
 		return -EAGAIN;
 
 	if (un->flags & AT_REMOVEDIR)
-		ret = do_rmdir(un->dfd, un->filename);
+		ret = do_rmdir_filename(un->dfd, un->filename);
 	else
 		ret = do_unlinkat(un->dfd, un->filename);
 
@@ -4536,7 +4520,7 @@ static int io_madvise(struct io_kiocb *req, unsigned int issue_flags)
 	if (issue_flags & IO_URING_F_NONBLOCK)
 		return -EAGAIN;
 
-	ret = do_madvise(current->mm, ma->addr, ma->len, ma->advice);
+	ret = do_madvise(current, current->mm, ma->addr, ma->len, ma->advice);
 	if (ret < 0)
 		req_set_fail(req);
 	io_req_complete(req, ret);
@@ -7660,7 +7644,7 @@ static int io_run_task_work_sig(void)
 		return 1;
 	if (!signal_pending(current))
 		return 0;
-	if (test_thread_flag(TIF_NOTIFY_SIGNAL))
+	if (READ_ONCE(current->jobctl) & JOBCTL_TASK_WORK)
 		return -ERESTARTSYS;
 	return -EINTR;
 }
@@ -8772,7 +8756,7 @@ static void io_buffer_unmap(struct io_ring_ctx *ctx, struct io_mapped_ubuf **slo
 
 	if (imu != ctx->dummy_ubuf) {
 		for (i = 0; i < imu->nr_bvecs; i++)
-			unpin_user_page(imu->bvec[i].bv_page);
+			put_page(imu->bvec[i].bv_page);
 		if (imu->acct_pages)
 			io_unaccount_mem(ctx, imu->acct_pages);
 		kvfree(imu);
@@ -8952,7 +8936,7 @@ static int io_sqe_buffer_register(struct io_ring_ctx *ctx, struct iovec *iov,
 
 	ret = 0;
 	mmap_read_lock(current->mm);
-	pret = pin_user_pages(ubuf, nr_pages, FOLL_WRITE | FOLL_LONGTERM,
+	pret = get_user_pages(ubuf, nr_pages, FOLL_WRITE | FOLL_LONGTERM,
 			      pages, vmas);
 	if (pret == nr_pages) {
 		struct file *file = vmas[0]->vm_file;
@@ -8980,13 +8964,15 @@ static int io_sqe_buffer_register(struct io_ring_ctx *ctx, struct iovec *iov,
 		 * release any pages we did get
 		 */
 		if (pret > 0)
-			unpin_user_pages(pages, pret);
+			for (i = 0; i < pret; i++)
+				put_page(pages[i]);
 		goto done;
 	}
 
 	ret = io_buffer_account_pin(ctx, pages, pret, imu, last_hpage);
 	if (ret) {
-		unpin_user_pages(pages, pret);
+		for (i = 0; i < pret; i++)
+				put_page(pages[i]);
 		goto done;
 	}
 

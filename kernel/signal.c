@@ -2768,11 +2768,15 @@ relock:
 		/*
 		 * Death signals, no core dump.
 		 */
+		if (current->flags & PF_IO_WORKER)
+			goto io_worker_signal;
+
 		do_group_exit(ksig->info.si_signo);
 		/* NOTREACHED */
 	}
 	spin_unlock_irq(&sighand->siglock);
 
+io_worker_signal:
 	ksig->sig = signr;
 	return ksig->sig > 0;
 }

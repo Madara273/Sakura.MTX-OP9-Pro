@@ -19,6 +19,9 @@
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
 
+#ifdef CONFIG_IO_WQ
+#include "../../io_uring/io-wq.h"
+#endif
 #include "../workqueue_internal.h"
 #include "../smpboot.h"
 
@@ -4627,6 +4630,14 @@ static inline void sched_submit_work(struct task_struct *tsk)
 		preempt_enable_no_resched();
 	}
 
+#ifdef CONFIG_IO_WQ
+	if (tsk->flags & PF_IO_WORKER) {
+		preempt_disable();
+		io_wq_worker_sleeping(tsk);
+		preempt_enable_no_resched();
+	}
+#endif
+
 	if (tsk_is_pi_blocked(tsk))
 		return;
 
@@ -4642,6 +4653,10 @@ static void sched_update_worker(struct task_struct *tsk)
 {
 	if (tsk->flags & PF_WQ_WORKER)
 		wq_worker_running(tsk);
+#ifdef CONFIG_IO_WQ
+	if (tsk->flags & PF_IO_WORKER)
+		io_wq_worker_running(tsk);
+#endif
 }
 
 asmlinkage __visible void __sched schedule(void)
