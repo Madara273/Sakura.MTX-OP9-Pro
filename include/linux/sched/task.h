@@ -18,6 +18,7 @@ union thread_union;
 #define CLONE_LEGACY_FLAGS 0xffffffffULL
 
 struct kernel_clone_args {
+	bool io_thread;
 	u64 flags;
 	int __user *pidfd;
 	int __user *child_tid;
@@ -92,6 +93,7 @@ extern void do_group_exit(int);
 extern void exit_files(struct task_struct *);
 extern void exit_itimers(struct signal_struct *);
 
+struct task_struct *create_io_thread(int (*fn)(void *), void *arg, int node);
 extern long _do_fork(struct kernel_clone_args *kargs);
 extern bool legacy_clone_args_valid(const struct kernel_clone_args *kargs);
 extern long do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *);
@@ -117,9 +119,9 @@ static inline struct task_struct *get_task_struct(struct task_struct *t)
 extern void __put_task_struct(struct task_struct *t);
 extern void __put_task_struct_rcu_cb(struct rcu_head *rhp);
 
-static inline void put_task_struct(struct task_struct *t)
+static inline void put_task_struct_many(struct task_struct *t, int nr)
 {
-	if (!refcount_dec_and_test(&t->usage))
+	if (!refcount_sub_and_test(nr, &t->usage))
 		return;
 
 	/*
@@ -146,6 +148,11 @@ static inline void put_task_struct(struct task_struct *t)
 		call_rcu(&t->rcu, __put_task_struct_rcu_cb);
 	else
 		__put_task_struct(t);
+}
+
+static inline void put_task_struct(struct task_struct *t)
+{
+	put_task_struct_many(t, 1);
 }
 
 void put_task_struct_rcu_user(struct task_struct *task);

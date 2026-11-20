@@ -1095,8 +1095,8 @@ static int splice_pipe_to_pipe(struct pipe_inode_info *ipipe,
 /*
  * Determine where to splice to/from.
  */
-static long do_splice(struct file *in, loff_t __user *off_in,
-		      struct file *out, loff_t __user *off_out,
+long do_splice(struct file *in, loff_t *off_in,
+		      struct file *out, loff_t *off_out,
 		      size_t len, unsigned int flags)
 {
 	struct pipe_inode_info *ipipe;
@@ -1133,8 +1133,7 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 		if (off_out) {
 			if (!(out->f_mode & FMODE_PWRITE))
 				return -EINVAL;
-			if (copy_from_user(&offset, off_out, sizeof(loff_t)))
-				return -EFAULT;
+			offset = *off_out;
 		} else {
 			offset = out->f_pos;
 		}
@@ -1158,8 +1157,8 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 
 		if (!off_out)
 			out->f_pos = offset;
-		else if (copy_to_user(off_out, &offset, sizeof(loff_t)))
-			ret = -EFAULT;
+		else
+			*off_out = offset;
 
 		return ret;
 	}
@@ -1170,8 +1169,7 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 		if (off_in) {
 			if (!(in->f_mode & FMODE_PREAD))
 				return -EINVAL;
-			if (copy_from_user(&offset, off_in, sizeof(loff_t)))
-				return -EFAULT;
+			offset = *off_in;
 		} else {
 			offset = in->f_pos;
 		}
@@ -1195,13 +1193,52 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 			wakeup_pipe_readers(opipe);
 		if (!off_in)
 			in->f_pos = offset;
-		else if (copy_to_user(off_in, &offset, sizeof(loff_t)))
-			ret = -EFAULT;
+		else
+			*off_in = offset;
 
 		return ret;
 	}
 
 	return -EINVAL;
+}
+
+static long do_splice_user(struct file *in, loff_t __user *off_in,
+			   struct file *out, loff_t __user *off_out,
+			   size_t len, unsigned int flags)
+{
+	loff_t input, output;
+	long ret;
+
+	if (get_pipe_info(in) && get_pipe_info(out) && (off_in || off_out))
+		return -ESPIPE;
+	if (get_pipe_info(in)) {
+		if (off_in)
+			return -ESPIPE;
+		if (off_out && !(out->f_mode & FMODE_PWRITE))
+			return -EINVAL;
+	} else if (get_pipe_info(out)) {
+		if (off_out)
+			return -ESPIPE;
+		if (off_in && !(in->f_mode & FMODE_PREAD))
+			return -EINVAL;
+	} else {
+		return -EINVAL;
+	}
+
+	if (off_in && copy_from_user(&input, off_in, sizeof(input)))
+		return -EFAULT;
+	if (off_out && copy_from_user(&output, off_out, sizeof(output)))
+		return -EFAULT;
+
+	ret = do_splice(in, off_in ? &input : NULL, out,
+			off_out ? &output : NULL, len, flags);
+	if (ret < 0)
+		return ret;
+	if (off_in && copy_to_user(off_in, &input, sizeof(input)))
+		return -EFAULT;
+	if (off_out && copy_to_user(off_out, &output, sizeof(output)))
+		return -EFAULT;
+	return ret;
 }
 
 static int iter_to_pipe(struct iov_iter *from,
@@ -1430,7 +1467,7 @@ SYSCALL_DEFINE6(splice, int, fd_in, loff_t __user *, off_in,
 			out = fdget(fd_out);
 			if (out.file) {
 				if (out.file->f_mode & FMODE_WRITE)
-					error = do_splice(in.file, off_in,
+					error = do_splice_user(in.file, off_in,
 							  out.file, off_out,
 							  len, flags);
 				fdput(out);
@@ -1731,7 +1768,7 @@ static int link_pipe(struct pipe_inode_info *ipipe,
  * The 'flags' used are the SPLICE_F_* variants, currently the only
  * applicable one is SPLICE_F_NONBLOCK.
  */
-static long do_tee(struct file *in, struct file *out, size_t len,
+long do_tee(struct file *in, struct file *out, size_t len,
 		   unsigned int flags)
 {
 	struct pipe_inode_info *ipipe = get_pipe_info(in);

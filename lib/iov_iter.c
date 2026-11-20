@@ -1863,6 +1863,43 @@ ssize_t compat_import_iovec(int type,
 EXPORT_SYMBOL(compat_import_iovec);
 #endif
 
+ssize_t __import_iovec(int type, const struct iovec __user *uvector,
+		      unsigned nr_segs, unsigned fast_segs, struct iovec **iov,
+		      struct iov_iter *iter, bool compat)
+{
+#ifdef CONFIG_COMPAT
+	if (compat)
+		return compat_import_iovec(type,
+				(const struct compat_iovec __user *)uvector,
+				nr_segs, fast_segs, iov, iter);
+#endif
+	return import_iovec(type, uvector, nr_segs, fast_segs, iov, iter);
+}
+
+void iov_iter_restore(struct iov_iter *iter, struct iov_iter_state *state)
+{
+	unsigned long advanced = state->nr_segs - iter->nr_segs;
+
+	switch (iov_iter_type(iter)) {
+	case ITER_IOVEC:
+		iter->iov -= advanced;
+		break;
+	case ITER_KVEC:
+		iter->kvec -= advanced;
+		break;
+	case ITER_BVEC:
+		iter->bvec -= advanced;
+		break;
+	default:
+		WARN_ON_ONCE(1);
+		return;
+	}
+
+	iter->iov_offset = state->iov_offset;
+	iter->count = state->count;
+	iter->nr_segs = state->nr_segs;
+}
+
 int import_single_range(int rw, void __user *buf, size_t len,
 		 struct iovec *iov, struct iov_iter *i)
 {
