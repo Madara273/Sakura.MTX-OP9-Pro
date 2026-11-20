@@ -83,6 +83,9 @@
 #include <asm/tlbflush.h>
 
 #include "internal.h"
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+#include <linux/susfs_def.h>
+#endif
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -4554,6 +4557,14 @@ int __access_remote_vm(struct task_struct *tsk, struct mm_struct *mm,
 		void *maddr;
 		struct page *page = NULL;
 
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+        vma = find_vma(mm, addr);
+        if (vma && vma->vm_start <= addr && vma->vm_file &&
+            susfs_is_current_proc_umounted_app() &&
+            (file_inode(vma->vm_file)->i_mapping->flags & BIT(AS_FLAGS_SUS_MAP)))
+            break;
+#endif
 		ret = get_user_pages_remote(tsk, mm, addr, 1,
 				gup_flags, &page, &vma, NULL);
 		if (ret <= 0) {

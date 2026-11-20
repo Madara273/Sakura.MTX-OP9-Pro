@@ -20,6 +20,76 @@
 #include "feature/selinux_hide.h"
 #include "compat/kernel_compat.h"
 
+
+#ifdef CONFIG_KSU_SUSFS
+
+#include <linux/jump_label.h>
+#include "security.h"
+
+bool ksu_selinux_hide_enabled __read_mostly = true;
+bool ksu_selinux_hide_running __read_mostly;
+struct page *fake_status;
+DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
+static DEFINE_MUTEX(fake_status_lock);
+
+void initialize_fake_status(void)
+{
+    struct page *real, *page;
+    struct selinux_kernel_status *status;
+
+    mutex_lock(&fake_status_lock);
+    if (fake_status)
+        goto out;
+    real = selinux_kernel_status_page(&selinux_state);
+    if (!real)
+        goto out;
+    page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+    if (!page)
+        goto out;
+    memcpy(page_address(page), page_address(real), sizeof(*status));
+    status = page_address(page);
+    status->enforcing = 1;
+    status->sequence = 0;
+    status->policyload = 0;
+    WRITE_ONCE(fake_status, page);
+out:
+    mutex_unlock(&fake_status_lock);
+}
+
+static int selinux_hide_get(u64 *value)
+{
+    *value = READ_ONCE(ksu_selinux_hide_enabled);
+    return 0;
+}
+static int selinux_hide_set(u64 value)
+{
+    WRITE_ONCE(ksu_selinux_hide_enabled, !!value);
+    WRITE_ONCE(ksu_selinux_hide_running, !!value);
+    return 0;
+}
+static const struct ksu_feature_handler selinux_hide_handler = {
+    .feature_id = KSU_FEATURE_SELINUX_HIDE,
+    .name = "selinux_hide",
+    .get_handler = selinux_hide_get,
+    .set_handler = selinux_hide_set,
+};
+void ksu_selinux_hide_handle_second_stage(void) { initialize_fake_status(); }
+void ksu_selinux_hide_handle_post_fs_data(void) { initialize_fake_status(); }
+void __init ksu_selinux_hide_init(void)
+{
+    ksu_register_feature_handler(&selinux_hide_handler);
+    WRITE_ONCE(ksu_selinux_hide_running, true);
+    static_branch_enable(&fake_status_initialize_key);
+}
+void __exit ksu_selinux_hide_exit(void)
+{
+    WRITE_ONCE(ksu_selinux_hide_running, false);
+    static_branch_disable(&fake_status_initialize_key);
+    ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
+    /* Existing userspace mappings keep the status page alive. */
+}
+
+#else
 #ifndef __nocfi
 #define __nocfi
 #endif
@@ -586,3 +656,5 @@ void __exit ksu_selinux_hide_exit(void)
         orig_proc_pid_attr_write = NULL;
     }
 }
+
+#endif

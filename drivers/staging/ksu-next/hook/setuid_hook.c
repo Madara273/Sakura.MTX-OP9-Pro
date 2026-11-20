@@ -45,6 +45,7 @@ static inline bool is_zygote_normal_app_uid(uid_t uid)
 }
 
 extern u32 susfs_zygote_sid;
+extern u32 susfs_zygote_next_sid;
 extern struct work_struct susfs_extra_works;
 
 static inline void ksu_handle_extra_susfs_work(void)
@@ -108,7 +109,9 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
 
     return 0;
 #else // #ifndef CONFIG_KSU_SUSFS
-    if (!susfs_is_sid_equal(current_cred(), susfs_zygote_sid)) {
+    if (!susfs_is_sid_equal(current_cred(), susfs_zygote_sid) &&
+        !(susfs_zygote_next_sid &&
+          susfs_is_sid_equal(current_cred(), susfs_zygote_next_sid))) {
         return 0;
     }
 

@@ -15,6 +15,11 @@
 #include "ss/symtab.h"
 #include "compat/kernel_compat.h" // Add check Huawei Device
 
+#ifdef CONFIG_KSU_SUSFS
+extern int susfs_add_sus_avd_allowed_by_type(u32 s, u32 t, u32 c, u32 allowed);
+extern int susfs_add_sus_type(const char *name, u32 value);
+#endif
+
 #define KSU_SUPPORT_ADD_TYPE
 
 //////////////////////////////////////////////////////
@@ -343,6 +348,11 @@ static bool add_rule_raw(struct policydb *db, struct type_datum *src,
             if (!node)
                 return false;
         }
+
+#ifdef CONFIG_KSU_SUSFS
+        if (effect == AVTAB_ALLOWED)
+            susfs_add_sus_avd_allowed_by_type(src->value, tgt->value, cls->value, node->datum.u.data);
+#endif
 
         if (invert) {
             if (perm)
@@ -825,6 +835,9 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
                 1);
     }
 
+#ifdef CONFIG_KSU_SUSFS
+    susfs_add_sus_type(type_name, type->value);
+#endif
     return true;
 #elif defined(CONFIG_IS_HW_HISI)
 	/*

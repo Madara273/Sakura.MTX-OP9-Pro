@@ -138,6 +138,10 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 	// If magic2 is susfs and current process is root
 	if (magic2 == SUSFS_MAGIC && current_uid().val == 0) {
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (cmd == CMD_SUSFS_SET_SUS_PATH_UID_FILTER) {
+			susfs_set_sus_path_uid_filter(arg);
+			return 0;
+		}
 		if (cmd == CMD_SUSFS_ADD_SUS_PATH) {
 			susfs_add_sus_path(arg);
 			return 0;
@@ -197,6 +201,12 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd,
 			return 0;
 		}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+		#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
+		if (cmd == CMD_SUSFS_SET_PRIORITY_UID_FILTER) {
+			susfs_set_priority_uid_filter(arg);
+			return 0;
+		}
+#endif
 		if (cmd == CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING) {
 			susfs_set_avc_log_spoofing(arg);
 			return 0;
