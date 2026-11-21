@@ -784,7 +784,9 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	{
 		.playback = {
 			.stream_name = "AUXPCM_HOSTLESS Playback",
+#ifndef CONFIG_AUXPCM_DISABLE
 			.aif_name = "AUXPCM_DL_HL",
+#endif
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min = 1,
@@ -794,7 +796,9 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.capture = {
 			.stream_name = "AUXPCM_HOSTLESS Capture",
+#ifndef CONFIG_AUXPCM_DISABLE
 			.aif_name = "AUXPCM_UL_HL",
+#endif
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min = 1,
@@ -809,7 +813,9 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	{
 		.playback = {
 			.stream_name = "SEC_AUXPCM_HOSTLESS Playback",
+#ifndef CONFIG_AUXPCM_DISABLE
 			.aif_name = "SEC_AUXPCM_DL_HL",
+#endif
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min = 1,
@@ -824,7 +830,9 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	{
 		.capture = {
 			.stream_name = "SEC_AUXPCM_HOSTLESS Capture",
+#ifndef CONFIG_AUXPCM_DISABLE
 			.aif_name = "SEC_AUXPCM_UL_HL",
+#endif
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 			.channels_min = 1,
