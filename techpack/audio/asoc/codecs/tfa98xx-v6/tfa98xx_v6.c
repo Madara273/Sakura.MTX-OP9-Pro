@@ -4452,6 +4452,27 @@ static struct snd_soc_dai_driver tfa98xx_dai[] = {
 	},
 };
 
+/* Component probes run under the card mutex. Keep the first codec as the
+ * owner of unprefixed controls shared by the stereo pair.
+ */
+static void tfa98xx_add_shared_controls(struct snd_soc_component *component,
+		const struct snd_kcontrol_new *controls, unsigned int count)
+{
+	unsigned int i;
+	int ret;
+
+	for (i = 0; i < count; i++) {
+		if (!component->name_prefix &&
+		    snd_soc_card_get_kcontrol(component->card, controls[i].name))
+			continue;
+
+		ret = snd_soc_add_component_controls(component, &controls[i], 1);
+		if (ret)
+			dev_err(component->dev, "Failed to add shared control %s: %d\n",
+				controls[i].name, ret);
+	}
+}
+
 static int tfa98xx_probe(struct snd_soc_component *component)
 {
 	struct tfa98xx *tfa98xx = snd_soc_component_get_drvdata(component);
@@ -4493,27 +4514,27 @@ static int tfa98xx_probe(struct snd_soc_component *component)
 	tfa98xx_add_widgets(tfa98xx);
 
 	#ifdef OPLUS_ARCH_EXTENDS
-	snd_soc_add_component_controls(tfa98xx->component,
+	tfa98xx_add_shared_controls(tfa98xx->component,
 		tfa98xx_snd_controls, ARRAY_SIZE(tfa98xx_snd_controls));
 	#endif /* OPLUS_ARCH_EXTENDS */
 
 	#ifdef OPLUS_ARCH_EXTENDS
-	snd_soc_add_component_controls(tfa98xx->component,
+	tfa98xx_add_shared_controls(tfa98xx->component,
 			ftm_spk_rev_controls, ARRAY_SIZE(ftm_spk_rev_controls));
 	#endif /* OPLUS_ARCH_EXTENDS */
 
 	#ifdef OPLUS_FEATURE_SPEAKER_MUTE
-	snd_soc_add_component_controls(tfa98xx->component,
+	tfa98xx_add_shared_controls(tfa98xx->component,
 		tfa98xx_snd_control_spk_mute, ARRAY_SIZE(tfa98xx_snd_control_spk_mute));
 	#endif /* OPLUS_FEATURE_SPEAKER_MUTE */
 
 	#ifdef OPLUS_FEATURE_FADE_IN
-	snd_soc_add_component_controls(tfa98xx->component,
+	tfa98xx_add_shared_controls(tfa98xx->component,
 		tfadsp_volume_controls, ARRAY_SIZE(tfadsp_volume_controls));
 	#endif /* OPLUS_FEATURE_FADE_IN */
 
 	#ifdef OPLUS_FEATURE_MM_FEEDBACK
-	snd_soc_add_component_controls(tfa98xx->component,
+	tfa98xx_add_shared_controls(tfa98xx->component,
 				   tfa98xx_check_feedback, ARRAY_SIZE(tfa98xx_check_feedback));
 	#endif
 

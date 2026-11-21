@@ -95,9 +95,23 @@ static const struct snd_kcontrol_new smartpa_pm_controls[] = {
 
 void add_smartpa_pm_controls(struct snd_soc_component *component)
 {
+	unsigned int i;
+	int ret;
+
 	#ifdef TEST_DEBUG_LOG
 	pr_info("%s(), enter", __func__);
 	#endif
-	snd_soc_add_component_controls(component, smartpa_pm_controls,
-				ARRAY_SIZE(smartpa_pm_controls));
+	/* A stereo pair shares these card-wide controls. */
+	for (i = 0; i < ARRAY_SIZE(smartpa_pm_controls); i++) {
+		if (!component->name_prefix &&
+		    snd_soc_card_get_kcontrol(component->card,
+					 smartpa_pm_controls[i].name))
+			continue;
+
+		ret = snd_soc_add_component_controls(component,
+					 &smartpa_pm_controls[i], 1);
+		if (ret)
+			dev_err(component->dev, "Failed to add shared control %s: %d\n",
+				smartpa_pm_controls[i].name, ret);
+	}
 }
