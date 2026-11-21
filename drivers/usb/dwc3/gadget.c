@@ -2450,8 +2450,6 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 
 		dwc->err_evt_seen = false;
 		dwc->pullups_connected = false;
-		__dwc3_gadget_ep_disable(dwc->eps[0]);
-		__dwc3_gadget_ep_disable(dwc->eps[1]);
 
 		/*
 		 * According to dwc3 databook, it is must to remove any active
@@ -2461,6 +2459,13 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 		 * controller is halted (i.e. second param as false).
 		 */
 		dwc3_stop_active_transfers(dwc, false);
+
+		/*
+		 * Keep EP0 enabled while ending data transfers so the controller
+		 * can still DMA a pending SETUP packet.
+		 */
+		__dwc3_gadget_ep_disable(dwc->eps[0]);
+		__dwc3_gadget_ep_disable(dwc->eps[1]);
 
 		reg &= ~DWC3_DCTL_RUN_STOP;
 
