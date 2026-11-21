@@ -50,6 +50,7 @@ struct oplus_chg_device {
 	struct oplus_chg_ic_dev *typec_ic;
 	struct work_struct otg_enable_work;
 	struct work_struct otg_disable_work;
+	struct work_struct usbout_reset_work;
 	struct delayed_work batt_update_work;
 	struct delayed_work connect_check_work;
 	struct delayed_work charger_status_check_work;
@@ -306,6 +307,20 @@ static void oplus_chg_batt_update_work(struct work_struct *work)
 	}
 
 	dev->batt_update_count = 0;
+}
+
+static void oplus_chg_usbout_reset_work(struct work_struct *work)
+{
+	struct oplus_chg_device *dev = container_of(work,
+				struct oplus_chg_device, usbout_reset_work);
+	int hw_detect = 0;
+
+	if (atomic_read(&dev->usb_online) || atomic_read(&dev->usb_present))
+		return;
+
+	oplus_chg_hw_detect(dev, &hw_detect);
+	if (!hw_detect)
+		oplus_warp_reset_fastchg_after_usbout();
 }
 
 static void oplus_chg_connect_check_work(struct work_struct *work)
@@ -1040,11 +1055,13 @@ static int oplus_chg_intf_usb_mod_notifier_call(struct notifier_block *nb,
 					op_dev->icon_debounce = false;
 					pr_info("sid_backup clean\n");
 					op_dev->sid_backup = 0;
-					oplus_warp_reset_fastchg_after_usbout();
 				}
 				atomic_set(&op_dev->usb_online, 0);
 				atomic_set(&op_dev->usb_present, 0);
 				chip->charger_exist_delay = false;
+				/* Reset can wait for a charger firmware response. */
+				if (!hw_detect)
+					schedule_work(&op_dev->usbout_reset_work);
 				if (op_dev->usb_ocm) {
 					oplus_chg_global_event(op_dev->usb_ocm, val);
 					oplus_chg_mod_changed(op_dev->usb_ocm);
@@ -2261,6 +2278,7 @@ reg_usb_changed_notifier_err:
 	oplus_chg_unreg_event_notifier(&oplus_dev->usb_event_nb);
 reg_usb_event_notifier_err:
 	oplus_chg_unreg_mod_notifier(oplus_dev->usb_ocm, &oplus_dev->usb_mod_nb);
+	cancel_work_sync(&oplus_dev->usbout_reset_work);
 reg_usb_mod_notifier_err:
 	oplus_chg_mod_unregister(oplus_dev->usb_ocm);
 
@@ -2281,6 +2299,7 @@ static int oplus_chg_intf_probe(struct platform_device *pdev)
 	oplus_dev->dev = &pdev->dev;
 	platform_set_drvdata(pdev, oplus_dev);
 
+	INIT_WORK(&oplus_dev->usbout_reset_work, oplus_chg_usbout_reset_work);
 	rc = oplus_chg_intf_init_mod(oplus_dev);
 	if (rc < 0)
 		pr_err("oplus chg common mod init error, rc=%d\n", rc);
@@ -2315,6 +2334,7 @@ static int oplus_chg_intf_remove(struct platform_device *pdev)
 	oplus_chg_unreg_changed_notifier(&oplus_dev->usb_changed_nb);
 	oplus_chg_unreg_event_notifier(&oplus_dev->usb_event_nb);
 	oplus_chg_unreg_mod_notifier(oplus_dev->usb_ocm, &oplus_dev->usb_mod_nb);
+	cancel_work_sync(&oplus_dev->usbout_reset_work);
 	oplus_chg_mod_unregister(oplus_dev->usb_ocm);
 	platform_set_drvdata(pdev, NULL);
 	return 0;
