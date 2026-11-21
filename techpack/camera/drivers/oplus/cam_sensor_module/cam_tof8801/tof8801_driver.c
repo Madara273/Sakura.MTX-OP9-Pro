@@ -164,6 +164,8 @@ int tof_power_down_thread(void *arg)
         AMS_MUTEX_OEM_UNLOCK(&chip->irq_lock);
         tof_debug_info("stop irq threadd done");
 
+        /* Wait for any in-flight STOP before releasing the CCI bus. */
+        AMS_MUTEX_OEM_LOCK(&chip->oem_lock);
         AMS_MUTEX_OEM_LOCK(&chip->power_lock);
         if(chip->power_status == TOF_POWER_ON && chip->tof_power_down_thread_exit == TOF_POWER_THREAD_START){
                 rc = tof_power_down();
@@ -171,6 +173,7 @@ int tof_power_down_thread(void *arg)
                         tof_debug_error("power down failed");
                         chip->tof_power_down_thread_exit = TOF_POWER_THREAD_STOP;
                         AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+                        AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
                         return rc;
                 }
                 tof_debug_info("power down success");
@@ -180,6 +183,7 @@ int tof_power_down_thread(void *arg)
         }
         chip->tof_power_down_thread_exit = TOF_POWER_THREAD_STOP;
         AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+        AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
         return 0;
 }
 
@@ -2011,14 +2015,14 @@ int tof_wait_for_cpu_startup(struct i2c_client *client)
   AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
 
   while (retry++ < TOF8801_MAX_STARTUP_RETRY) {
-  	tof_debug_error( "debug for tof8801_get_register %d\n", retry);
+    dev_dbg(&client->dev, "CPU startup poll %d\n", retry);
     usleep_range(TOF8801_I2C_WAIT_USEC, TOF8801_I2C_WAIT_USEC+1);
     error = tof8801_get_register(client, TOF8801_STAT, &status);
     if (error) {
       tof_debug_error( "i2c test failed attempt %d: %d\n", retry, error);
       continue;
     } else {
-      tof_debug_error("CPU status register: %#04x value: %#04x\n",
+      dev_dbg(&client->dev, "CPU status register: %#04x value: %#04x\n",
                TOF8801_STAT, status);
     }
     if (TOF8801_STAT_CPU_READY(status)) {
@@ -2628,7 +2632,7 @@ static int tof8801_firmware_download(struct tof_sensor_chip *chip, int startup)
     }
   }
   ktime_get_real_ts64(&end_ts);
-  tof_debug_error("FWDL callback %lu ms to finish",
+  tof_debug_info("FWDL callback %lu ms to finish",
           (timespec64_sub(end_ts, start_ts).tv_nsec / 1000000));
   // error if App0 is not running (fwdl failed)
   return (chip->info_rec.record.app_id != TOF8801_APP_ID_APP0) ? -EIO : 0;
@@ -2787,12 +2791,17 @@ int tof_oem_start(void)
 int  tof_stop(void)
 {
 	struct tof_sensor_chip *chip = g_tof_sensor_chip;
+        bool powered;
 
-        if (is_alread_probe == 1){
-                AMS_MUTEX_OEM_LOCK(&chip->oem_lock);
+        /* Keep the sensor powered while sending the STOP command. */
+        AMS_MUTEX_OEM_LOCK(&chip->oem_lock);
+        AMS_MUTEX_OEM_LOCK(&chip->power_lock);
+        powered = chip->power_status == TOF_POWER_ON;
+        AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+
+        if (is_alread_probe && powered) {
                 tof8801_app0_capture(chip, 0);
                 tof_debug_info("tof stop capture ");
-                AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
         }
 
         AMS_MUTEX_OEM_LOCK(&chip->power_lock);
@@ -2804,6 +2813,7 @@ int  tof_stop(void)
                 tof_debug_info("donot need do power down,power status=%d,thread_exit=%d",chip->power_status,chip->tof_power_down_thread_exit);
         }
         AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+        AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
 
 	return 0;
 }
@@ -2843,7 +2853,7 @@ int wait_for_tof_ready(void)
                 msleep(20);
 		gpiod_set_value(g_tof_sensor_chip->pdata->gpiod_enable, 1);
                 msleep(20);
-		tof_debug_error( "wait_for_tof_ready ok.\n");
+		tof_debug_info("Waiting for ToF CPU startup\n");
 		/***** Wait until ToF is ready for commands *****/
 		error = tof_wait_for_cpu_startup(client);
 		if (error) {
