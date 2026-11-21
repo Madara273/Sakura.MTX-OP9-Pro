@@ -622,8 +622,6 @@ static int tri_key_m1120_parse_dt(struct device *dev,
 		struct m1120_data_t *p_data)
 {
 	struct device_node *np = dev->of_node;
-	struct pinctrl *key_pinctrl;
-	struct pinctrl_state *set_state;
 	u32 temp_val;
 	int rc;
 
@@ -647,20 +645,23 @@ static int tri_key_m1120_parse_dt(struct device *dev,
 
 	p_data->use_hrtimer = of_property_read_bool(np, "magnachip,use-hrtimer");
 
-	key_pinctrl = devm_pinctrl_get(dev);
-
-	if (IS_ERR_OR_NULL(key_pinctrl))
-		TRI_KEY_ERR("Failed to get pinctrl\n");
-
-	set_state = pinctrl_lookup_state(key_pinctrl,
-			"downhall_tri_state_key_active");
-	if (IS_ERR_OR_NULL(set_state))
-		TRI_KEY_ERR("Failed to lookup_state\n");
-
-	pinctrl_select_state(key_pinctrl, set_state);
-
-
 	return 0;
+}
+
+static int m1120_select_irq_pins(struct device *dev)
+{
+	struct pinctrl_state *state;
+	struct pinctrl *pinctrl;
+
+	pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(pinctrl))
+		return PTR_ERR(pinctrl);
+
+	state = pinctrl_lookup_state(pinctrl, "downhall_tri_state_key_active");
+	if (IS_ERR(state))
+		return PTR_ERR(state);
+
+	return pinctrl_select_state(pinctrl, state);
 }
 
 static int m1120_get_data(short *data)
@@ -943,19 +944,6 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 		}
 	}
 
-	if (gpio_is_valid(p_data->irq_gpio)) {
-		err = gpio_request(p_data->irq_gpio, "m1120_down_irq");
-		if (err) {
-			TRI_KEY_LOG("unable to request gpio [%d]", p_data->irq_gpio);
-		} else {
-			err = gpio_direction_input(p_data->irq_gpio);
-			msleep(50);
-			p_data->irq = gpio_to_irq(p_data->irq_gpio);
-			TRI_KEY_LOG("======> irq : %d", p_data->irq);
-		}
-
-	}
-
 	err = m1120_power_init(p_data);
 	if (err) {
 		TRI_KEY_ERR("Failed to get sensor regulators\n");
@@ -965,7 +953,6 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 	err = m1120_power_ctl(p_data, true);
 	if (err) {
 		TRI_KEY_ERR("Failed to enable sensor power\n");
-		err = -EINVAL;
 		goto put_regulators;
 	}
 
@@ -976,6 +963,25 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 		TRI_KEY_ERR("m1120_init_device was failed(%d)", err);
 		goto power_off;
 	}
+	/* Other Hall sensor variants can share the same interrupt GPIO. */
+	if (gpio_is_valid(p_data->irq_gpio)) {
+		if (client->dev.of_node) {
+			err = m1120_select_irq_pins(&client->dev);
+			if (err)
+				goto power_off;
+		}
+
+		err = devm_gpio_request_one(&client->dev, p_data->irq_gpio,
+					    GPIOF_IN, "m1120_down_irq");
+		if (err)
+			goto power_off;
+		msleep(50);
+		err = gpio_to_irq(p_data->irq_gpio);
+		if (err < 0)
+			goto power_off;
+		p_data->irq = err;
+	}
+
 	TRI_KEY_LOG("%s was found", id->name);
 
 	/*(8) init input device*/
@@ -1001,9 +1007,6 @@ put_regulators:
 	regulator_put(p_data->vio);
 	regulator_put(p_data->vdd);
 error_1:
-	if (gpio_is_valid(p_data->irq_gpio))
-		gpio_free(p_data->irq_gpio);
-
 	i2c_set_clientdata(client, NULL);
 	kfree(p_data);
 	kfree(hall_dev);
