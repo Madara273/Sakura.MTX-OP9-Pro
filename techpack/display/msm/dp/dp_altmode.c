@@ -93,7 +93,7 @@ static void dp_altmode_send_pan_ack(struct altmode_client *amclient,
 		u8 port_index)
 {
 	int rc;
-	struct altmode_pan_ack_msg ack;
+	struct altmode_pan_ack_msg ack = { 0 };
 
 	ack.cmd_type = ALTMODE_PAN_ACK;
 	ack.port_index = port_index;

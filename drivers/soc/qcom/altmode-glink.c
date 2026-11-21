@@ -482,7 +482,7 @@ static void altmode_send_pan_en(struct work_struct *work)
 static int altmode_send_ack(struct altmode_dev *amdev, u8 port_index)
 {
 	int rc;
-	struct altmode_pan_ack_msg ack;
+	struct altmode_pan_ack_msg ack = { 0 };
 
 	ack.cmd_type = ALTMODE_PAN_ACK;
 	ack.port_index = port_index;
@@ -631,7 +631,7 @@ static int send_ack_write(void *data, u64 val)
 {
 	int rc;
 	struct altmode_dev *amdev = data;
-	struct altmode_pan_ack_msg ack;
+	struct altmode_pan_ack_msg ack = { 0 };
 
 	if (val >= MAX_NUM_PORTS)
 		return -EINVAL;
