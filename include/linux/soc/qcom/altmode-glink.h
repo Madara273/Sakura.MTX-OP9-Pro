@@ -34,6 +34,7 @@ enum altmode_send_msg_type {
 struct altmode_pan_ack_msg {
 	u32 cmd_type;
 	u8 port_index;
+	u8 reserved[3];
 };
 
 #if IS_ENABLED(CONFIG_QTI_ALTMODE_GLINK)
