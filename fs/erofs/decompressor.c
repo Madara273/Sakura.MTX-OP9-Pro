@@ -13,7 +13,9 @@
 
 #define LZ4_MAX_DISTANCE_PAGES	(DIV_ROUND_UP(LZ4_DISTANCE_MAX, PAGE_SIZE) + 1)
 #ifndef LZ4_DECOMPRESS_INPLACE_MARGIN
-#define LZ4_DECOMPRESS_INPLACE_MARGIN(srcsize)  (((srcsize) >> 8) + 32)
+/* Account for the 64-byte wild copies in the LZ4 fast decode loop. */
+#define LZ4_DECOMPRESS_INPLACE_MARGIN(srcsize) \
+	(((srcsize) >> 8) + ((srcsize) >> 15) + 65)
 #endif
 
 struct z_erofs_decompressor {
