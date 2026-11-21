@@ -3,6 +3,7 @@
  */
 
 #include <linux/devcoredump.h>
+#include <linux/property.h>
 
 #include "main.h"
 #include "regd.h"
@@ -2167,8 +2168,15 @@ static int rtw_chip_efuse_info_setup(struct rtw_dev *rtwdev)
 	efuse->ext_lna_5g = efuse->lna_type_5g & BIT(3) ? 1 : 0;
 
 	if (!is_valid_ether_addr(efuse->addr)) {
-		eth_random_addr(efuse->addr);
-		dev_warn(rtwdev->dev, "efuse MAC invalid, using random\n");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0)
+		if (!device_get_mac_address(rtwdev->dev, efuse->addr, ETH_ALEN)) {
+#else
+		if (device_get_mac_address(rtwdev->dev, efuse->addr)) {
+#endif
+			eth_random_addr(efuse->addr);
+			dev_warn(rtwdev->dev,
+				 "failed to get valid MAC address, using random\n");
+		}
 	}
 
 out_disable:

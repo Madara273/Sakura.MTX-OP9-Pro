@@ -177,7 +177,7 @@ static void rtw88xxa_fill_hw_cap(struct rtw_dev *rtwdev)
 			   BIT(RTW_CHANNEL_WIDTH_80);
 	efuse->hw_cap.ptcl = EFUSE_HW_CAP_PTCL_VHT;
 
-	if (rtwdev->chip->id == RTW_CHIP_TYPE_8821A)
+	if (rtwdev->chip->id == RTW_CHIP_TYPE_8821A || efuse->btcoex)
 		efuse->hw_cap.nss = 1;
 	else
 		efuse->hw_cap.nss = 2;
@@ -241,14 +241,14 @@ int rtw88xxa_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)
 	efuse->tx_bb_swing_setting_2g = map->tx_bb_swing_setting_2g;
 	efuse->tx_bb_swing_setting_5g = map->tx_bb_swing_setting_5g;
 
-	rtw88xxa_fill_hw_cap(rtwdev);
-
 	if (chip->id == RTW_CHIP_TYPE_8821A)
 		efuse->btcoex = rtw_read32_mask(rtwdev, REG_WL_BT_PWR_CTRL,
 						BIT_BT_FUNC_EN);
 	else
 		efuse->btcoex = (map->rf_board_option & 0xe0) == 0x20;
 	efuse->share_ant = !!(efuse->bt_setting & BIT(0));
+
+	rtw88xxa_fill_hw_cap(rtwdev);
 
 	/* No antenna diversity because it's disabled in the vendor driver */
 	efuse->ant_div_cfg = 0;
@@ -1190,7 +1190,7 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 	rtw88xxa_phy_bb_config(rtwdev);
 	rtw88xxa_phy_rf_config(rtwdev);
 
-	if (chip->id == RTW_CHIP_TYPE_8812A && hal->rf_path_num == 1)
+	if (chip->id == RTW_CHIP_TYPE_8812A && efuse->hw_cap.nss == 1)
 		rtw8812a_config_1t(rtwdev);
 
 	rtw88xxa_switch_band(rtwdev, RTW_BAND_2G, RTW_CHANNEL_WIDTH_20);
@@ -1203,6 +1203,12 @@ int rtw88xxa_power_on(struct rtw_dev *rtwdev)
 
 	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
 		rtw_write8_clr(rtwdev, REG_GPIO_MUXCFG, BIT_BT_PTA_EN);
+
+	/* Init BT hw config. */
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_PCIE &&
+	    chip->id == RTW_CHIP_TYPE_8812A &&
+	    (efuse->rfe_option == 1 || efuse->rfe_option == 5))
+		rtw_write32_mask(rtwdev, REG_ANTSEL_SW, 0x303, 0x302);
 
 	rtw_phy_init(rtwdev);
 
@@ -1961,44 +1967,6 @@ iqk:
 		do_iqk(rtwdev);
 }
 EXPORT_SYMBOL(rtw88xxa_phy_pwrtrack);
-
-void rtw88xxa_phy_cck_pd_set(struct rtw_dev *rtwdev, u8 new_lvl)
-{
-	static const u8 pd[CCK_PD_LV_MAX] = {0x40, 0x83, 0xcd, 0xdd, 0xed};
-	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
-
-	/* Override rtw_phy_cck_pd_lv_link(). It implements something
-	 * like type 2/3/4. We need type 1 here.
-	 */
-	if (rtw_is_assoc(rtwdev)) {
-		if (dm_info->min_rssi > 60) {
-			new_lvl = CCK_PD_LV3;
-		} else if (dm_info->min_rssi > 35) {
-			new_lvl = CCK_PD_LV2;
-		} else if (dm_info->min_rssi > 20) {
-			if (dm_info->cck_fa_avg > 500)
-				new_lvl = CCK_PD_LV2;
-			else if (dm_info->cck_fa_avg < 250)
-				new_lvl = CCK_PD_LV1;
-			else
-				return;
-		} else {
-			new_lvl = CCK_PD_LV1;
-		}
-	}
-
-	rtw_dbg(rtwdev, RTW_DBG_PHY, "lv: (%d) -> (%d)\n",
-		dm_info->cck_pd_lv[RTW_CHANNEL_WIDTH_20][RF_PATH_A], new_lvl);
-
-	if (dm_info->cck_pd_lv[RTW_CHANNEL_WIDTH_20][RF_PATH_A] == new_lvl)
-		return;
-
-	dm_info->cck_fa_avg = CCK_FA_AVG_RESET;
-	dm_info->cck_pd_lv[RTW_CHANNEL_WIDTH_20][RF_PATH_A] = new_lvl;
-
-	rtw_write8(rtwdev, REG_CCK_PD_TH, pd[new_lvl]);
-}
-EXPORT_SYMBOL(rtw88xxa_phy_cck_pd_set);
 
 MODULE_AUTHOR("Realtek Corporation");
 MODULE_DESCRIPTION("Realtek 802.11ac wireless 8821a/8811a/8812a common code");

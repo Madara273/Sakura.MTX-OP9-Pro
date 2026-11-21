@@ -2587,7 +2587,7 @@ static void query_phy_status_page0(struct rtw_dev *rtwdev, u8 *phy_status,
 	pkt_stat->rx_power[RF_PATH_A] = rx_power[RF_PATH_A];
 	pkt_stat->rx_power[RF_PATH_B] = rx_power[RF_PATH_B];
 
-	for (path = 0; path <= rtwdev->hal.rf_path_num; path++) {
+	for (path = 0; path < rtwdev->hal.rf_path_num; path++) {
 		rssi = rtw_phy_rf_power_2_rssi(&pkt_stat->rx_power[path], 1);
 		dm_info->rssi[path] = rssi;
 	}
@@ -2647,7 +2647,7 @@ static void query_phy_status_page1(struct rtw_dev *rtwdev, u8 *phy_status,
 	pkt_stat->cfo_tail[RF_PATH_A] = GET_PHY_STAT_P1_CFO_TAIL_A(phy_status);
 	pkt_stat->cfo_tail[RF_PATH_B] = GET_PHY_STAT_P1_CFO_TAIL_B(phy_status);
 
-	for (path = 0; path <= rtwdev->hal.rf_path_num; path++) {
+	for (path = 0; path < rtwdev->hal.rf_path_num; path++) {
 		rssi = rtw_phy_rf_power_2_rssi(&pkt_stat->rx_power[path], 1);
 		dm_info->rssi[path] = rssi;
 		if (path == RF_PATH_A) {
@@ -3410,7 +3410,7 @@ static u8 rtw8822c_dpk_one_shot(struct rtw_dev *rtwdev, u8 path, u8 action)
 		rtw_write32_mask(rtwdev, REG_DPD_CTL0, BIT(12), 0x1);
 		rtw_write32_mask(rtwdev, REG_DPD_CTL0, BIT(12), 0x0);
 		rtw_write32_mask(rtwdev, REG_RXSRAM_CTL, BIT_RPT_SEL, 0x0);
-		msleep(10);
+		fsleep(10000);
 		if (!check_hw_ready(rtwdev, REG_STAT_RPT, BIT(31), 0x1)) {
 			result = 1;
 			rtw_dbg(rtwdev, RTW_DBG_RFK, "[DPK] one-shot over 20ms\n");
@@ -3423,7 +3423,7 @@ static u8 rtw8822c_dpk_one_shot(struct rtw_dev *rtwdev, u8 path, u8 action)
 		dpk_cmd = rtw8822c_dpk_get_cmd(rtwdev, action, path);
 		rtw_write32(rtwdev, REG_NCTL0, dpk_cmd);
 		rtw_write32(rtwdev, REG_NCTL0, dpk_cmd + 1);
-		msleep(10);
+		fsleep(10000);
 		if (!check_hw_ready(rtwdev, 0x2d9c, 0xff, 0x55)) {
 			result = 1;
 			rtw_dbg(rtwdev, RTW_DBG_RFK, "[DPK] one-shot over 20ms\n");
