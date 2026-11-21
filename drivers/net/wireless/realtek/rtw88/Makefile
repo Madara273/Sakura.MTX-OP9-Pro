@@ -22,6 +22,8 @@ rtw88-y	+= main.o \
 rtw88-$(CONFIG_PM)		+= wow.o
 
 obj-$(CONFIG_RTW88_8703B)	+= rtw8703b.o rtw8703b_tables.o
+obj-$(CONFIG_RTW88_8723B)	+= rtw8723b.o rtw8723b_table.o
+obj-$(CONFIG_RTW88_8723BS)	+= rtw8723bs.o
 obj-$(CONFIG_RTW88_8723CS)	+= rtw8723cs.o
 obj-$(CONFIG_RTW88_8723D)	+= rtw8723d.o rtw8723d_table.o
 obj-$(CONFIG_RTW88_8723DE)	+= rtw8723de.o
