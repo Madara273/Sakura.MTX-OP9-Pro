@@ -1213,33 +1213,15 @@ done:
 
 int msm_adsp_init_mixer_ctl_adm_pp_event_queue(struct snd_soc_pcm_runtime *rtd)
 {
-	struct snd_kcontrol *kctl = NULL;
-	char *mixer_str = NULL;
-	int ctl_len = 0, ret = 0;
-	const char *mixer_ctl_name = DSP_ADM_CALLBACK;
-	struct dsp_adm_callback_prtd *kctl_prtd = NULL;
+	struct snd_kcontrol *kctl;
+	struct dsp_adm_callback_prtd *kctl_prtd;
 
-	if (!rtd) {
-		pr_err("%s: rtd is NULL\n", __func__);
-		ret = -EINVAL;
-		goto done;
-	}
+	if (!rtd)
+		return -EINVAL;
 
-	ctl_len = strlen(mixer_ctl_name) + 1;
-	mixer_str = kzalloc(ctl_len, GFP_KERNEL);
-	if (!mixer_str) {
-		ret = -EINVAL;
-		goto done;
-	}
-
-	snprintf(mixer_str, ctl_len, "%s", mixer_ctl_name);
-	kctl = snd_soc_card_get_kcontrol(rtd->card, mixer_str);
-	kfree(mixer_str);
-	if (!kctl) {
-		pr_err("%s: failed to get kctl.\n", __func__);
-		ret = -EINVAL;
-		goto done;
-	}
+	kctl = snd_soc_card_get_kcontrol(rtd->card, DSP_ADM_CALLBACK);
+	if (!kctl)
+		return -ENOENT;
 
 	if (kctl->private_data != NULL) {
 		pr_err("%s: kctl_prtd is not NULL at initialization.\n",
@@ -1249,18 +1231,15 @@ int msm_adsp_init_mixer_ctl_adm_pp_event_queue(struct snd_soc_pcm_runtime *rtd)
 
 	kctl_prtd = kzalloc(sizeof(struct dsp_adm_callback_prtd),
 			GFP_KERNEL);
-	if (!kctl_prtd) {
-		ret = -ENOMEM;
-		goto done;
-	}
+	if (!kctl_prtd)
+		return -ENOMEM;
 
 	spin_lock_init(&kctl_prtd->prtd_spin_lock);
 	INIT_LIST_HEAD(&kctl_prtd->event_queue);
 	kctl_prtd->event_count = 0;
 	kctl->private_data = kctl_prtd;
 
-done:
-	return ret;
+	return 0;
 }
 
 int msm_adsp_clean_mixer_ctl_adm_pp_event_queue(struct snd_soc_pcm_runtime *rtd)
