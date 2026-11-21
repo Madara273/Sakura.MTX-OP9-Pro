@@ -25,6 +25,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
+#include <linux/init_syscalls.h>
 #include <linux/fs_context.h>
 #include <uapi/linux/mount.h>
 #include "base.h"
@@ -367,7 +368,7 @@ static int handle_remove(const char *nodename, struct device *dev)
  * If configured, or requested by the commandline, devtmpfs will be
  * auto-mounted after the kernel mounted the root filesystem.
  */
-int devtmpfs_mount(const char *mntdir)
+int __init devtmpfs_mount(const char *mntdir)
 {
 	int err;
 
@@ -377,7 +378,7 @@ int devtmpfs_mount(const char *mntdir)
 	if (!thread)
 		return 0;
 
-	err = ksys_mount("devtmpfs", mntdir, "devtmpfs", MS_SILENT, NULL);
+	err = init_mount("devtmpfs", mntdir, "devtmpfs", MS_SILENT, NULL);
 	if (err)
 		printk(KERN_INFO "devtmpfs: error mounting %i\n", err);
 	else
@@ -396,13 +397,14 @@ static int handle(const char *name, umode_t mode, kuid_t uid, kgid_t gid,
 		return handle_remove(name, dev);
 }
 
-static int devtmpfsd(void *p)
+/* devtmpfs_init() waits for setup_done before init memory can be freed. */
+static int __ref devtmpfsd(void *p)
 {
 	int *err = p;
 	*err = ksys_unshare(CLONE_NEWNS);
 	if (*err)
 		goto out;
-	*err = ksys_mount("devtmpfs", "/", "devtmpfs", MS_SILENT, NULL);
+	*err = init_mount("devtmpfs", "/", "devtmpfs", MS_SILENT, NULL);
 	if (*err)
 		goto out;
 	ksys_chdir("/.."); /* will traverse into overmounted root */
