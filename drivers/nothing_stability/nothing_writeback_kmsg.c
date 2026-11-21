@@ -453,6 +453,7 @@ static int NT_reserve_kernel_log_main(void *arg)
 {
 	struct block_device *bdev = NULL;
 	struct file target_partition_file;
+	int ret = 1;
 
 	if(!__verify_target_partition_layout()){
 		NT_rkl_err_print("Error setting, plz check your layout setting!\n");
@@ -468,7 +469,12 @@ static int NT_reserve_kernel_log_main(void *arg)
 	bdev = get_target_partition_block_device();
 	if(!bdev) {
 		NT_rkl_err_print("Get target partition block device failed!\n");
-		return 1;
+		goto remove_device;
+	}
+
+	if (i_size_read(bdev->bd_inode) < NT_CHECK_LAYOUT_END_OFFSET) {
+		NT_rkl_err_print("logdump partition is too small for the log layout\n");
+		goto put_bdev;
 	}
 
 	memset(&target_partition_file, 0, sizeof(struct file));
@@ -477,13 +483,17 @@ static int NT_reserve_kernel_log_main(void *arg)
 
 	if(init_reserve_kernel_log_header(&target_partition_file)){
 		NT_rkl_err_print("Init header failed!\n");
-		return 1;
+		goto put_bdev;
 	}
 	write_back_kernel_boot_log(&target_partition_file);
 
-	remove_NT_device();
+	ret = 0;
 
-	return 0;
+put_bdev:
+	blkdev_put(bdev, FMODE_READ | FMODE_WRITE);
+remove_device:
+	remove_NT_device();
+	return ret;
 }
 
 static int __init NT_reserve_kernel_log_init(void)
