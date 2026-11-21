@@ -323,6 +323,25 @@ make_defconfig(){
 	echo -e "${YELLOW}------------------------------${NC}"
 }
 
+prepare_ksu_headers(){
+	grep -q '^CONFIG_KSU=[ym]$' "$TARGET_OUT/.config" || return 0
+
+	# The preinit userspace runner needs sanitised UAPI headers, independently
+	# of CONFIG_HEADERS_INSTALL and without installing headers system-wide.
+	echo -e "${DARK_GREY}Preparing UAPI headers for KernelSU preinit...${NC}"
+	(
+		set -o pipefail
+		make $FINAL_KERNEL_BUILD_PARA headers 2>&1 |
+			while IFS= read -r line || [ -n "$line" ]; do
+				printf '%s%s%s\n' "$DARK_GREY" "$line" "$NC"
+			done
+	) || return $?
+	[ -f "$TARGET_OUT/usr/include/linux/unistd.h" ] || {
+		echo -e "${RED}KernelSU preinit UAPI headers were not generated.${NC}"
+		return 1
+	}
+}
+
 # ---- Function for building a kernel with color output and countdown ----
 build_kernel() {
 	echo -e "${YELLOW}---------------------------------------${NC}"
@@ -930,6 +949,7 @@ compile_kernel() {
 	check_tools
 	clone_anykernel3
 	make_defconfig
+	prepare_ksu_headers || return 1
 	display_build_info
 	create_changelog
 	save_defconfig
