@@ -12,7 +12,8 @@ const char *selinux_policycap_names[__POLICYDB_CAPABILITY_MAX] = {
 	"always_check_network",
 	"cgroup_seclabel",
 	"nnp_nosuid_transition",
-	"genfs_seclabel_symlinks"
+	"genfs_seclabel_symlinks",
+	[POLICYDB_CAPABILITY_FUNCTIONFS_SECLABEL] = "functionfs_seclabel"
 };
 
 #endif /* _SELINUX_POLICYCAP_NAMES_H_ */

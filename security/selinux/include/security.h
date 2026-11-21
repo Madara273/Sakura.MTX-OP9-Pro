@@ -205,6 +205,11 @@ static inline bool selinux_policycap_nnp_nosuid_transition(void)
 	return state->policycap[POLICYDB_CAPABILITY_NNP_NOSUID_TRANSITION];
 }
 
+static inline bool selinux_policycap_functionfs_seclabel(void)
+{
+	return READ_ONCE(selinux_state.policycap[POLICYDB_CAPABILITY_FUNCTIONFS_SECLABEL]);
+}
+
 static inline bool selinux_android_nlroute_getlink(void)
 {
 	struct selinux_state *state = &selinux_state;
