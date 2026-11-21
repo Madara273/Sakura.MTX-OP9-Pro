@@ -5904,6 +5904,11 @@ static int cnss_pci_of_reserved_mem_device_init(struct cnss_pci_data *pci_priv)
 	/* Use of_reserved_mem_device_init_by_idx() if reserved memory is
 	 * attached to platform device of_node.
 	 */
+	/* PCI devices may have no OF node or reserved-memory assignment. */
+	if (!dev_pci->of_node ||
+	    !of_find_property(dev_pci->of_node, "memory-region", NULL))
+		return 0;
+
 	ret = of_reserved_mem_device_init(dev_pci);
 	if (ret)
 		cnss_pr_err("Failed to init reserved mem device, err = %d\n",

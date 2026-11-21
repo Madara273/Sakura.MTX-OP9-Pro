@@ -3151,7 +3151,6 @@ MODULE_DEVICE_TABLE(of, cnss_of_match_table);
 
 #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
 //Add for wifi switch monitor
-static void icnss_create_fw_state_kobj(void);
 static ssize_t icnss_show_fw_ready(struct device_driver *driver, char *buf)
 {
 	bool firmware_ready = false;
@@ -3267,10 +3266,6 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_get_cpr_info(plat_priv);
 	cnss_init_control_params(plat_priv);
 
-    #ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
-    //Add for wifi switch monitor
-	icnss_create_fw_state_kobj();
-	#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
 
 	ret = cnss_get_resources(plat_priv);
 	if (ret)
@@ -3414,29 +3409,30 @@ static struct platform_driver cnss_platform_driver = {
 	},
 };
 
-#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
-//Add for wifi switch monitor
-static void icnss_create_fw_state_kobj(void) {
-	if (driver_create_file(&(cnss_platform_driver.driver), &fw_ready_attr)) {
-		cnss_pr_info("failed to create %s", fw_ready_attr.attr.name);
-	}
-}
-#endif /* OPLUS_FEATURE_WIFI_DCS_SWITCH */
-
 static int __init cnss_initialize(void)
 {
 	int ret = 0;
 
 	cnss_debug_init();
 	ret = platform_driver_register(&cnss_platform_driver);
-	if (ret)
+	if (ret) {
 		cnss_debug_deinit();
+		return ret;
+	}
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+	ret = driver_create_file(&cnss_platform_driver.driver, &fw_ready_attr);
+	if (ret)
+		cnss_pr_err("Failed to create firmware_ready, err = %d\n", ret);
+#endif
 
-	return ret;
+	return 0;
 }
 
 static void __exit cnss_exit(void)
 {
+#ifdef OPLUS_FEATURE_WIFI_DCS_SWITCH
+	driver_remove_file(&cnss_platform_driver.driver, &fw_ready_attr);
+#endif
 	platform_driver_unregister(&cnss_platform_driver);
 	cnss_debug_deinit();
 }

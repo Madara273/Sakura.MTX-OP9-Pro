@@ -484,7 +484,7 @@
 		reusable;
 		alignment = <0x0 0x400000>;
 		#ifndef OPLUS_BUG_STABILITY
-		#size = <0x0 0x1400000>;
+		size = <0x0 0x1400000>;
 		#else
 		size = <0x0 0x1E00000>;
 		#endif /* OPLUS_BUG_STABILITY */
