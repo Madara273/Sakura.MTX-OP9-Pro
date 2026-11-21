@@ -138,8 +138,6 @@ int hashtab_duplicate(struct hashtab *new, struct hashtab *orig,
 		return -ENOMEM;
 
 	new->size = orig->size;
-	new->hash_value = orig->hash_value;
-	new->keycmp = orig->keycmp;
 
 	for (i = 0; i < orig->size; i++) {
 		tail = NULL;
