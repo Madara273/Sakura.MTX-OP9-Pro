@@ -1865,10 +1865,14 @@ int dsi_display_auto_mode_update(void *dsi_display)
 	int h_skew = SDC_ADFR;
 	int rc = 0;
 
-	if (!display || !display->panel || !display->panel->cur_mode) {
+	if (!display || !display->panel) {
 		DSI_ERR("kVRR dsi_display_auto_mode_update Invalid params\n");
 		return -EINVAL;
 	}
+
+	/* An inactive connector can reach pre-commit before a mode is set. */
+	if (!display->panel->cur_mode)
+		return 0;
 
 	h_skew = display->panel->cur_mode->timing.h_skew;
 	if ((h_skew != SDC_ADFR) && (h_skew != SDC_MFR)) {
@@ -1879,12 +1883,16 @@ int dsi_display_auto_mode_update(void *dsi_display)
 	SDE_ATRACE_BEGIN("dsi_display_auto_mode_update");
 
 	if (oplus_adfr_auto_mode_updated) {
-		dsi_display_auto_mode_enable(display, oplus_adfr_auto_mode);
+		rc = dsi_display_auto_mode_enable(display, oplus_adfr_auto_mode);
+		if (rc)
+			goto exit;
 		oplus_adfr_auto_mode_updated = false;
 	}
 
 	if (oplus_adfr_auto_min_fps_updated) {
-		dsi_display_auto_mode_min_fps(display, oplus_adfr_auto_min_fps);
+		rc = dsi_display_auto_mode_min_fps(display, oplus_adfr_auto_min_fps);
+		if (rc)
+			goto exit;
 		oplus_adfr_auto_min_fps_updated = false;
 	}
 
@@ -1893,6 +1901,7 @@ int dsi_display_auto_mode_update(void *dsi_display)
 		oplus_adfr_auto_fakeframe_updated = false;
 	}
 
+exit:
 	SDE_ATRACE_END("dsi_display_auto_mode_update");
 
 	return rc;
