@@ -2173,13 +2173,17 @@ static int init_power_control(struct touchpanel_data *ts)
 {
 	int ret = 0;
 
-	/* 1.8v*/
-	ts->hw_res.vddi = regulator_get(ts->dev, "vcc_1v8");
+	/* Some boards switch the 1.8 V rail directly through an enable GPIO. */
+	if (gpio_is_valid(ts->hw_res.enable_vddi_gpio) &&
+	    !of_find_property(ts->dev->of_node, "vcc_1v8-supply", NULL))
+		ts->hw_res.vddi = NULL;
+	else
+		ts->hw_res.vddi = regulator_get(ts->dev, "vcc_1v8");
 
-	if (IS_ERR_OR_NULL(ts->hw_res.vddi)) {
+	if (IS_ERR(ts->hw_res.vddi)) {
 		TP_INFO(ts->tp_index, "Regulator get failed vcc_1v8, ret = %d\n", ret);
 
-	} else {
+	} else if (ts->hw_res.vddi) {
 		if (regulator_count_voltages(ts->hw_res.vddi) > 0) {
 			ret = regulator_set_voltage(ts->hw_res.vddi, 1800000, 1800000);
 
