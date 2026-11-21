@@ -231,8 +231,29 @@ static int send_to_group(struct inode *to_tell,
 	if (!(test_mask & marks_mask & ~marks_ignored_mask))
 		return 0;
 
-	return group->ops->handle_event(group, to_tell, mask, data, data_is,
-					file_name, cookie, iter_info);
+	if (group->ops->handle_event)
+		return group->ops->handle_event(group, to_tell, mask, data, data_is,
+					      file_name, cookie, iter_info);
+
+	/* The 5.4 iterator reports parent and child inode events separately. */
+	mark = iter_info->marks[FSNOTIFY_OBJ_TYPE_INODE];
+	if (WARN_ON_ONCE(!group->ops->handle_inode_event) || !mark ||
+	    !fsnotify_iter_should_report_type(iter_info, FSNOTIFY_OBJ_TYPE_INODE))
+		return 0;
+
+	if (data_is == FSNOTIFY_EVENT_PATH) {
+		const struct path *path = data;
+
+		if ((mark->mask & FS_EXCL_UNLINK) && d_unlinked(path->dentry))
+			return 0;
+		return group->ops->handle_inode_event(mark, mask,
+				d_inode(path->dentry), file_name ? to_tell : NULL,
+				file_name, cookie);
+	}
+
+	return group->ops->handle_inode_event(mark, mask,
+			data_is == FSNOTIFY_EVENT_INODE ? (struct inode *)data : NULL,
+			file_name ? to_tell : NULL, file_name, cookie);
 }
 
 static struct fsnotify_mark *fsnotify_first_mark(struct fsnotify_mark_connector **connp)
