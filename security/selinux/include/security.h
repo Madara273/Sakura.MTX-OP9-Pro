@@ -12,6 +12,7 @@
 #include <linux/compiler.h>
 #include <linux/dcache.h>
 #include <linux/magic.h>
+#include <linux/mutex.h>
 #include <linux/types.h>
 #include <linux/rcupdate.h>
 #include <linux/refcount.h>
