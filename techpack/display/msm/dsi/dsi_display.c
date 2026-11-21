@@ -6340,7 +6340,8 @@ static int dsi_display_bind(struct device *dev,
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)display);
 #ifdef OPLUS_BUG_STABILITY
-	oplus_display_private_api_init();
+	if (!strcmp(display->display_type, "primary"))
+		oplus_display_private_api_init();
 	if(display->panel->esd_config.esd_err_flag_enabled) {
 		DSI_INFO("20627 panel add esd err flag detect\n");
 		dsi_display_register_esd_err_irq(display);
@@ -6401,7 +6402,8 @@ static void dsi_display_unbind(struct device *dev,
 	}
 
 #ifdef OPLUS_BUG_STABILITY
-    oplus_display_private_api_exit();
+	if (!strcmp(display->display_type, "primary"))
+		oplus_display_private_api_exit();
 #endif
 	mutex_lock(&display->display_lock);
 
