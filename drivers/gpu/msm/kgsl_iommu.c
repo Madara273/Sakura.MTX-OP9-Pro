@@ -2391,9 +2391,11 @@ static int iommu_probe_user_context(struct kgsl_device *device,
 	 * we should create a device_link between kgsl iommu device and gpu
 	 * device to maintain a correct suspend order between smmu device and
 	 * gpu device.
+	 * The context device has no driver of its own, so only track ordering,
+	 * not driver binding. Depopulating the context removes this link.
 	 */
 	if (!device_link_add(&device->pdev->dev, &iommu->user_context.pdev->dev,
-			DL_FLAG_AUTOREMOVE_CONSUMER))
+			DL_FLAG_STATELESS))
 		dev_err(&iommu->user_context.pdev->dev,
 				"Unable to create device link to gpu device\n");
 
