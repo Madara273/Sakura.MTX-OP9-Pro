@@ -5887,15 +5887,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 		return ret;
 	}
 
-	if (sde_conn->encoder) {
-		conn->state->best_encoder = sde_conn->encoder;
-		SDE_DEBUG_ENC(sde_enc,
-			"configured cstate->best_encoder to ID = %d\n",
-			conn->state->best_encoder->base.id);
-	} else {
-		SDE_ERROR_ENC(sde_enc, "No encoder mapped to connector=%d\n",
-				conn->base.id);
-	}
+	/* Leave connector routing to the first atomic modeset. */
 
 	ret = sde_rm_reserve(&sde_kms->rm, encoder, encoder->crtc->state,
 			conn->state, false);
