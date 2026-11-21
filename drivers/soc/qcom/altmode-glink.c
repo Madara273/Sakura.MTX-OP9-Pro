@@ -67,6 +67,7 @@ struct usbc_write_buffer_req_msg {
  * @send_pan_ack_work:	To schedule the sending of the PAN Ack message
  * @debugfs_dir:	Dentry for debugfs directory "altmode"
  * @response_received:	To detect remote subsystem response failures
+ * @write_lock:		Serializes requests sharing response_received
  * @ack_port_index:	Port index to ack for a nonexistent client
  */
 struct altmode_dev {
@@ -81,6 +82,7 @@ struct altmode_dev {
 	struct delayed_work		send_pan_ack_work;
 	struct dentry			*debugfs_dir;
 	struct completion		response_received;
+	struct mutex			write_lock;
 	u8				ack_port_index;
 };
 
@@ -152,6 +154,7 @@ static int altmode_write(struct altmode_dev *amdev, void *data, size_t len)
 {
 	int rc;
 
+	mutex_lock(&amdev->write_lock);
 	reinit_completion(&amdev->response_received);
 	rc = pmic_glink_write(amdev->pgclient, data, len);
 	if (!rc) {
@@ -159,6 +162,7 @@ static int altmode_write(struct altmode_dev *amdev, void *data, size_t len)
 				msecs_to_jiffies(ALTMODE_WAIT_MS));
 		rc = rc ? 0 : -ETIMEDOUT;
 	}
+	mutex_unlock(&amdev->write_lock);
 
 	if (rc)
 		pr_err("Error in sending message: %d\n", rc);
@@ -706,6 +710,7 @@ static int altmode_probe(struct platform_device *pdev)
 	amdev->dev = dev;
 
 	mutex_init(&amdev->client_lock);
+	mutex_init(&amdev->write_lock);
 	idr_init(&amdev->client_idr);
 	init_completion(&amdev->response_received);
 	INIT_DELAYED_WORK(&amdev->send_pan_en_work, altmode_send_pan_en);
