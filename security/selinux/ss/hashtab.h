@@ -17,6 +17,9 @@
 
 #define HASHTAB_MAX_NODES	U32_MAX
 
+/* Embedded tables and explicit key parameters are available on this backport. */
+#define SELINUX_HASHTAB_KEY_PARAMS 1
+
 struct hashtab_key_params {
 	u32 (*hash)(const void *key);	/* hash function */
 	int (*cmp)(const void *key1, const void *key2);
