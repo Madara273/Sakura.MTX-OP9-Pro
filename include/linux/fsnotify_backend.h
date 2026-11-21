@@ -119,6 +119,10 @@ struct fsnotify_ops {
 			    u32 mask, const void *data, int data_type,
 			    const struct qstr *file_name, u32 cookie,
 			    struct fsnotify_iter_info *iter_info);
+	/* Simple callback for groups containing only inode marks. */
+	int (*handle_inode_event)(struct fsnotify_mark *mark, u32 mask,
+				  struct inode *inode, struct inode *dir,
+				  const struct qstr *file_name, u32 cookie);
 	void (*free_group_priv)(struct fsnotify_group *group);
 	void (*freeing_mark)(struct fsnotify_mark *mark, struct fsnotify_group *group);
 	void (*free_event)(struct fsnotify_event *event);
