@@ -10401,10 +10401,14 @@ more_balance:
 		update_rq_clock(busiest);
 
 		/*
-		 * Set loop_max when rq's lock is taken to prevent a race.
+		 * Set the scan limit under the source rq lock. If a scan
+		 * resumes after dropping the lock, only shrink its limit.
 		 */
-		env.loop_max = min(sysctl_sched_nr_migrate,
-							busiest->cfs.h_nr_running);
+		if (!env.loop)
+			env.loop_max = min(sysctl_sched_nr_migrate,
+					   busiest->cfs.h_nr_running);
+		else
+			env.loop_max = min(env.loop_max, busiest->cfs.h_nr_running);
 
 		/*
 		 * cur_ld_moved - load moved in current iteration
