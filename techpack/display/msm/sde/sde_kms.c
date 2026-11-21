@@ -2505,7 +2505,13 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(tmp_conn, &conn_iter) {
-		if (enc == tmp_conn->state->best_encoder) {
+		struct drm_encoder *conn_encoder = tmp_conn->state->best_encoder;
+
+		/* Splash has hardware routing before an atomic connector state. */
+		if (!conn_encoder && to_sde_connector(tmp_conn)->encoder &&
+		    sde_encoder_in_cont_splash(to_sde_connector(tmp_conn)->encoder))
+			conn_encoder = to_sde_connector(tmp_conn)->encoder;
+		if (enc == conn_encoder) {
 			conn = tmp_conn;
 			break;
 		}
@@ -3904,6 +3910,10 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 			drm_enc = conn->state->best_encoder;
 		else
 			drm_enc = conn->encoder;
+
+		if (!drm_enc && to_sde_connector(conn)->encoder &&
+		    sde_encoder_in_cont_splash(to_sde_connector(conn)->encoder))
+			drm_enc = to_sde_connector(conn)->encoder;
 
 		if (drm_enc)
 			sde_encoder_early_wakeup(drm_enc);

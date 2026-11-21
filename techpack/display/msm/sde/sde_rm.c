@@ -2391,8 +2391,7 @@ end:
 
 static void _sde_rm_commit_rsvp(
 		struct sde_rm *rm,
-		struct sde_rm_rsvp *rsvp,
-		struct drm_connector_state *conn_state)
+		struct sde_rm_rsvp *rsvp)
 {
 	struct sde_rm_hw_blk *blk;
 	enum sde_hw_blk_type type;
@@ -2400,7 +2399,7 @@ static void _sde_rm_commit_rsvp(
 	/* Swap next rsvp to be the active */
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &rm->hw_blks[type], list) {
-			if (blk->rsvp_nxt && conn_state->best_encoder->base.id
+			if (blk->rsvp_nxt && rsvp->enc_id
 					 == blk->rsvp_nxt->enc_id) {
 				blk->rsvp = blk->rsvp_nxt;
 				blk->rsvp_nxt = NULL;
@@ -2584,7 +2583,7 @@ int sde_rm_reserve(
 
 commit_rsvp:
 	_sde_rm_release_rsvp(rm, rsvp_cur, conn_state->connector);
-	_sde_rm_commit_rsvp(rm, rsvp_nxt, conn_state);
+	_sde_rm_commit_rsvp(rm, rsvp_nxt);
 
 end:
 	kfree(comp_info);

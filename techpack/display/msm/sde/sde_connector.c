@@ -698,6 +698,10 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 	else
 		drm_enc = conn->encoder;
 
+	if (!drm_enc && to_sde_connector(conn)->encoder &&
+	    sde_encoder_in_cont_splash(to_sde_connector(conn)->encoder))
+		drm_enc = to_sde_connector(conn)->encoder;
+
 	sde_rm_get_resource_info(&sde_kms->rm, drm_enc, avail_res);
 
 	avail_res->max_mixer_width = sde_kms->catalog->max_mixer_width;
