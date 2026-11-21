@@ -571,7 +571,7 @@ static u8 rtw_usb_tx_queue_mapping_to_qsel(struct sk_buff *skb)
 		 is_multicast_ether_addr(hdr->addr1))
 		qsel = TX_DESC_QSEL_HIGH;
 	else if (skb_get_queue_mapping(skb) <= IEEE80211_AC_BK)
-		qsel = skb->priority;
+		qsel = skb->priority & IEEE80211_QOS_CTL_TAG1D_MASK;
 	else
 		qsel = TX_DESC_QSEL_BEACON;
 
@@ -589,9 +589,12 @@ static int rtw_usb_tx_write(struct rtw_dev *rtwdev,
 	int ep;
 
 	pkt_info->qsel = rtw_usb_tx_queue_mapping_to_qsel(skb);
+	ep = qsel_to_ep(rtwusb, pkt_info->qsel);
+	if (ep < 0 || ep >= ARRAY_SIZE(rtwusb->tx_queue))
+		return -EINVAL;
+
 	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
 	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
-	ep = qsel_to_ep(rtwusb, pkt_info->qsel);
 	rtw_tx_fill_tx_desc(rtwdev, pkt_info, pkt_desc);
 	rtw_tx_fill_txdesc_checksum(rtwdev, pkt_info, pkt_desc);
 	tx_data = rtw_usb_get_tx_data(skb);
