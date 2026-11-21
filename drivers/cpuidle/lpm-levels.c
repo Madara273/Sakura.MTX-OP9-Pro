@@ -1169,7 +1169,7 @@ unlock_return:
 	spin_unlock(&cluster->sync_lock);
 }
 
-static inline void cpu_prepare(struct lpm_cpu *cpu, int cpu_index,
+static inline int cpu_prepare(struct lpm_cpu *cpu, int cpu_index,
 				bool from_idle)
 {
 	struct lpm_cpu_level *cpu_level = &cpu->levels[cpu_index];
@@ -1186,8 +1186,9 @@ static inline void cpu_prepare(struct lpm_cpu *cpu, int cpu_index,
 	 */
 
 	if (from_idle && cpu_level->is_reset)
-		cpu_pm_enter();
+		return cpu_pm_enter();
 
+	return 0;
 }
 
 static inline void cpu_unprepare(struct lpm_cpu *cpu, int cpu_index,
@@ -1362,7 +1363,9 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 	/* Read the timer from the CPU that is entering idle */
 	per_cpu(next_hrtimer, dev->cpu) = tick_nohz_get_next_hrtimer();
 
-	cpu_prepare(cpu, idx, true);
+	ret = cpu_prepare(cpu, idx, true);
+	if (ret)
+		goto prepare_failed;
 	cluster_prepare(cpu->parent, cpumask, idx, true, 0);
 
 	RCU_NONIDLE(trace_cpu_idle_enter(idx));
@@ -1388,6 +1391,8 @@ exit:
 	dev->last_residency = ktime_us_delta(ktime_get(), start);
 	update_history(dev, idx);
 	RCU_NONIDLE(trace_cpu_idle_exit(idx, ret));
+	ret = idx;
+prepare_failed:
 	if (lpm_prediction && cpu->lpm_prediction) {
 		histtimer_cancel();
 		clusttimer_cancel();
@@ -1398,7 +1403,7 @@ exit:
 		cpu->bias = 0;
 	}
 	local_irq_enable();
-	return idx;
+	return ret;
 }
 
 static int lpm_cpuidle_s2idle(struct cpuidle_device *dev,
@@ -1418,7 +1423,9 @@ static int lpm_cpuidle_s2idle(struct cpuidle_device *dev,
 		return -EPERM;
 	}
 
-	cpu_prepare(cpu, idx, true);
+	ret = cpu_prepare(cpu, idx, true);
+	if (ret)
+		return ret;
 	cluster_prepare(cpu->parent, cpumask, idx, false, 0);
 
 	ret = psci_enter_sleep(cpu, idx, false);
@@ -1640,7 +1647,9 @@ static int lpm_suspend_enter(suspend_state_t state)
 		pr_err("Failed suspend\n");
 		return -EINVAL;
 	}
-	cpu_prepare(lpm_cpu, idx, false);
+	ret = cpu_prepare(lpm_cpu, idx, false);
+	if (ret)
+		return ret;
 	cluster_prepare(cluster, cpumask, idx, false, 0);
 
 	disable_rimps_timer(lpm_cpu);
