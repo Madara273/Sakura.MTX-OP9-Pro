@@ -966,7 +966,7 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 	if (err) {
 		TRI_KEY_ERR("Failed to enable sensor power\n");
 		err = -EINVAL;
-		goto error_1;
+		goto put_regulators;
 	}
 
 
@@ -974,7 +974,7 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 	err = m1120_init_device(p_data);
 	if (err) {
 		TRI_KEY_ERR("m1120_init_device was failed(%d)", err);
-		goto error_1;
+		goto power_off;
 	}
 	TRI_KEY_LOG("%s was found", id->name);
 
@@ -982,7 +982,7 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 	err = m1120_input_dev_init(p_data);
 	if (err) {
 		TRI_KEY_ERR("m1120_input_dev_init was failed(%d)", err);
-		goto error_1;
+		goto power_off;
 	}
 	TRI_KEY_LOG("%s was initialized", M1120_DRIVER_NAME_DOWN);
 
@@ -995,10 +995,16 @@ static int tri_key_m1120_i2c_drv_probe(struct i2c_client *client, const struct i
 	oplus_register_hall("hall_down", &m1120_downs_ops, hall_dev);
 	return 0;
 
+power_off:
+	m1120_power_ctl(p_data, false);
+put_regulators:
+	regulator_put(p_data->vio);
+	regulator_put(p_data->vdd);
 error_1:
 	if (gpio_is_valid(p_data->irq_gpio))
 		gpio_free(p_data->irq_gpio);
 
+	i2c_set_clientdata(client, NULL);
 	kfree(p_data);
 	kfree(hall_dev);
 
