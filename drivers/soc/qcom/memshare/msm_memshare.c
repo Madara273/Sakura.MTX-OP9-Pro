@@ -546,6 +546,9 @@ int memshare_alloc(struct device *dev,
 					unsigned int block_size,
 					struct mem_blocks *pblk)
 {
+	if (!block_size)
+		return -EINVAL;
+
 	dev_dbg(memsh_drv->dev,
 		"memshare: allocation request for size: %d", block_size);
 
@@ -685,7 +688,8 @@ static int memshare_child_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "memshare: Continuing with allocation from CMA\n");
 	}
 
-	if (memblock[num_clients].guarantee) {
+	/* A zero-sized client has no boot-time allocation to reserve. */
+	if (memblock[num_clients].guarantee && size) {
 		rc = memshare_alloc(drv->dev,
 				size,
 				&memblock[num_clients]);
