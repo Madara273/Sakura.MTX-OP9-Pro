@@ -734,7 +734,7 @@ int LZ4_compress_destSize_extState(void *state, const char *src, char *dst,
  */
 
 #define LZ4_DECOMPRESS_INPLACE_MARGIN(compressedSize)                          \
-	(((compressedSize) >> 8) + 32)
+	(((compressedSize) >> 8) + ((compressedSize) >> 15) + 65)
 #define LZ4_DECOMPRESS_INPLACE_BUFFER_SIZE(decompressedSize)                   \
 	((decompressedSize) +                                                  \
 	 LZ4_DECOMPRESS_INPLACE_MARGIN(                                        \
