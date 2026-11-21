@@ -1980,11 +1980,11 @@ static int sel_make_policycap(struct selinux_fs_info *fsi)
 	struct inode *inode = NULL;
 
 	for (iter = 0; iter <= POLICYDB_CAPABILITY_MAX; iter++) {
-		if (iter < ARRAY_SIZE(selinux_policycap_names))
-			dentry = d_alloc_name(fsi->policycap_dir,
-					      selinux_policycap_names[iter]);
-		else
-			dentry = d_alloc_name(fsi->policycap_dir, "unknown");
+		/* Unsupported capabilities between backported bits have no name. */
+		if (!selinux_policycap_names[iter])
+			continue;
+		dentry = d_alloc_name(fsi->policycap_dir,
+				      selinux_policycap_names[iter]);
 
 		if (dentry == NULL)
 			return -ENOMEM;
