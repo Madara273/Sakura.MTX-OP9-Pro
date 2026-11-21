@@ -2,8 +2,17 @@
 #define __KSU_H_SEPOLICY
 
 #include <linux/types.h>
+#include <linux/version.h>
 
 #include "ss/policydb.h"
+
+#if defined(KSU_COMPAT_HAS_SELINUX_POLICY) || \
+    LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+#define SELINUX_POLICY_INSTEAD_SELINUX_SS
+struct selinux_policy;
+struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);
+void ksu_destroy_sepolicy(struct selinux_policy *pol);
+#endif
 
 // Keep policydb.len in step with what the policy actually serializes to.
 // Best effort: on failure policydb.len is padded instead.

@@ -81,7 +81,7 @@ static bool add_typeattribute(struct policydb *db, const char *type,
 
 // htable is a struct instead of pointer above 5.8.0:
 // https://elixir.bootlin.com/linux/v5.8-rc1/source/security/selinux/ss/symtab.h
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+#if defined(SELINUX_HASHTAB_KEY_PARAMS) || LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 #define ksu_hashtab_for_each(htab, cur)                                        \
     ksu_hash_for_each(htab.htable, htab.size, cur)
 #else
@@ -91,7 +91,7 @@ static bool add_typeattribute(struct policydb *db, const char *type,
 
 // symtab_search is introduced on 5.9.0:
 // https://elixir.bootlin.com/linux/v5.9-rc1/source/security/selinux/ss/symtab.h
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+#if !defined(SELINUX_HASHTAB_KEY_PARAMS) && LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
 #define symtab_search(s, name) hashtab_search((s)->table, name)
 #define symtab_insert(s, name, datum) hashtab_insert((s)->table, name, datum)
 #endif
@@ -560,7 +560,7 @@ static bool add_type_rule(struct policydb *db, const char *s, const char *t,
 // 5.9.0 : static inline int hashtab_insert(struct hashtab *h, void *key, void
 // *datum, struct hashtab_key_params key_params) 5.8.0: int
 // hashtab_insert(struct hashtab *h, void *k, void *d);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+#if defined(SELINUX_HASHTAB_KEY_PARAMS) || LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
 static u32 filenametr_hash(const void *k)
 {
     const struct filename_trans_key *ft = k;
@@ -627,71 +627,99 @@ static bool add_filename_trans(struct policydb *db, const char *s,
         return false;
     }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
-	struct filename_trans_key *new_key = NULL;
-	int rc;
-	struct filename_trans_key key;
-	key.ttype = tgt->value;
-	key.tclass = cls->value;
-	key.name = (char *)o;
+#if defined(SELINUX_HASHTAB_KEY_PARAMS) || LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+    struct filename_trans_key key = {
+        .ttype = tgt->value,
+        .tclass = cls->value,
+        .name = (char *)o,
+    };
+    struct filename_trans_key *new_key;
+    struct filename_trans_datum *trans, *match = NULL, *last = NULL;
+    u32 stype = src->value - 1;
 
-	struct filename_trans_datum *last = NULL;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
-	struct filename_trans_datum *trans = policydb_filenametr_search(db, &key);
+#if defined(SELINUX_HASHTAB_KEY_PARAMS) || LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+    trans = policydb_filenametr_search(db, &key);
 #else
-	struct filename_trans_datum *trans = hashtab_search(&db->filename_trans, &key);
+    trans = hashtab_search(&db->filename_trans, &key);
 #endif
-	while (trans) {
-		if (ebitmap_get_bit(&trans->stypes, src->value - 1)) {
-			// Duplicate, overwrite existing data and return
-			trans->otype = def->value;
-			return true;
-		}
-		if (trans->otype == def->value)
-			break;
-		last = trans;
-		trans = trans->next;
-	}
+    for (; trans; trans = trans->next) {
+        if (ebitmap_get_bit(&trans->stypes, stype))
+            break;
+        if (trans->otype == def->value)
+            match = trans;
+        last = trans;
+    }
 
-    if (trans == NULL) {
-        trans = (struct filename_trans_datum *)kcalloc(1, sizeof(*trans),
-                                                       GFP_ATOMIC);
-        if (!trans) {
-            pr_err("add_filename_trans: alloc filename_trans_datum failed\n");
-            goto out;
-        }
-        new_key = kzalloc(sizeof(*new_key), GFP_ATOMIC);
-        if (!new_key) {
-            pr_err("add_filename_trans: alloc filename_trans_key failed\n");
-            goto free_trans;
-        }
-        *new_key = key;
-        new_key->name = kstrdup(key.name, GFP_ATOMIC);
-        if (!new_key->name) {
-            pr_err("add_filename_trans: kstrdup name failed\n");
-            goto free_key;
-        }
-        trans->next = last;
-        trans->otype = def->value;
-        rc = hashtab_insert(&db->filename_trans, new_key, trans,
-                            filenametr_key_params);
-        if (rc) {
-            pr_err("add_filename_trans: hashtab_insert failed: %d\n", rc);
-            goto free_name;
+    if (trans && trans->otype == def->value)
+        return true;
+    if (trans) {
+        struct ebitmap_node *node;
+        struct ebitmap *stypes = &trans->stypes;
+
+        if (ebitmap_start_positive(stypes, &node) == stype &&
+            ebitmap_next_positive(stypes, &node, stype) == ebitmap_length(stypes)) {
+            trans->otype = def->value;
+            return true;
         }
     }
 
+    if (match) {
+        if (ebitmap_set_bit(&match->stypes, stype, 1))
+            return false;
+        if (trans)
+            ebitmap_set_bit(&trans->stypes, stype, 0);
+        else
+            db->compat_filename_trans_count++;
+        return true;
+    }
+
+    match = kzalloc(sizeof(*match), GFP_ATOMIC);
+    if (!match)
+        return false;
+    match->otype = def->value;
+    if (ebitmap_set_bit(&match->stypes, stype, 1))
+        goto free_datum;
+
+    if (trans) {
+        match->next = trans->next;
+        trans->next = match;
+        ebitmap_set_bit(&trans->stypes, stype, 0);
+        return true;
+    }
+    if (last) {
+        last->next = match;
+        db->compat_filename_trans_count++;
+        return true;
+    }
+
+    new_key = kmemdup(&key, sizeof(key), GFP_ATOMIC);
+    if (!new_key)
+        goto free_datum;
+    new_key->name = kstrdup(key.name, GFP_ATOMIC);
+    if (!new_key->name)
+        goto free_key;
+
+#ifdef SELINUX_HASHTAB_KEY_PARAMS
+    if (ebitmap_set_bit(&db->filename_trans_ttypes, key.ttype, 1))
+        goto free_name;
+#endif
+#if defined(SELINUX_HASHTAB_KEY_PARAMS) || LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+    if (hashtab_insert(&db->filename_trans, new_key, match, filenametr_key_params))
+#else
+    if (hashtab_insert(&db->filename_trans, new_key, match))
+#endif
+        goto free_name;
+
     db->compat_filename_trans_count++;
-    return ebitmap_set_bit(&trans->stypes, src->value - 1, 1) == 0;
+    return true;
 
 free_name:
     kfree(new_key->name);
 free_key:
     kfree(new_key);
-free_trans:
-    kfree(trans);
-out:
+free_datum:
+    ebitmap_destroy(&match->stypes);
+    kfree(match);
     return false;
 #else // < 5.7.0, has no filename_trans_key, but struct filename_trans
 
@@ -782,6 +810,62 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
         return false;
     }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
+    struct ebitmap *new_type_attr_map_array;
+    struct type_datum **new_type_val_to_struct;
+    char **new_val_to_name_types;
+    u32 i = 0;
+
+    new_type_attr_map_array =
+        ksu_kvrealloc(db->type_attr_map_array, value * sizeof(struct ebitmap),
+                      (value - 1) * sizeof(struct ebitmap));
+    if (!new_type_attr_map_array)
+        goto free_type;
+    db->type_attr_map_array = new_type_attr_map_array;
+
+    new_type_val_to_struct =
+        ksu_kvrealloc(db->type_val_to_struct,
+                      sizeof(*db->type_val_to_struct) * value,
+                      sizeof(*db->type_val_to_struct) * (value - 1));
+    if (!new_type_val_to_struct)
+        goto free_type;
+    db->type_val_to_struct = new_type_val_to_struct;
+
+    new_val_to_name_types =
+        ksu_kvrealloc(db->sym_val_to_name[SYM_TYPES], sizeof(char *) * value,
+                      sizeof(char *) * (value - 1));
+    if (!new_val_to_name_types)
+        goto free_type;
+    db->sym_val_to_name[SYM_TYPES] = new_val_to_name_types;
+
+    ebitmap_init(&db->type_attr_map_array[value - 1]);
+    if (ebitmap_set_bit(&db->type_attr_map_array[value - 1], value - 1, 1))
+        goto rollback_bitmaps;
+    for (i = 0; i < db->p_roles.nprim; i++) {
+        if (ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1, 1))
+            goto rollback_bitmaps;
+    }
+    if (symtab_insert(&db->p_types, key, type))
+        goto rollback_bitmaps;
+
+    db->p_types.nprim = value;
+    db->type_val_to_struct[value - 1] = type;
+    db->sym_val_to_name[SYM_TYPES][value - 1] = key;
+#ifdef CONFIG_KSU_SUSFS
+    susfs_add_sus_type(type_name, type->value);
+#endif
+    return true;
+
+rollback_bitmaps:
+    while (i)
+        ebitmap_set_bit(&db->role_val_to_struct[--i]->types, value - 1, 0);
+    ebitmap_destroy(&db->type_attr_map_array[value - 1]);
+free_type:
+    pr_err("add_type: failed to add %s\n", type_name);
+    kfree(key);
+    kfree(type);
+    return false;
+#else
     if (symtab_insert(&db->p_types, key, type)) {
         pr_err("add_type: insert symtab failed.\n");
         kfree(key);
@@ -791,55 +875,7 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
 
     db->p_types.nprim = value;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
-    struct ebitmap *new_type_attr_map_array =
-        ksu_kvrealloc(db->type_attr_map_array, value * sizeof(struct ebitmap),
-                    (value - 1) * sizeof(struct ebitmap));
-
-    if (!new_type_attr_map_array) {
-        pr_err("add_type: alloc type_attr_map_array failed\n");
-        return false;
-    }
-
-    struct type_datum **new_type_val_to_struct =
-        ksu_kvrealloc(db->type_val_to_struct,
-                    sizeof(*db->type_val_to_struct) * value,
-                    sizeof(*db->type_val_to_struct) * (value - 1));
-
-    if (!new_type_val_to_struct) {
-        pr_err("add_type: alloc type_val_to_struct failed\n");
-        return false;
-    }
-
-    char **new_val_to_name_types =
-        ksu_kvrealloc(db->sym_val_to_name[SYM_TYPES], sizeof(char *) * value,
-                    sizeof(char *) * (value - 1));
-    if (!new_val_to_name_types) {
-        pr_err("add_type: alloc val_to_name failed\n");
-        return false;
-    }
-
-    db->type_attr_map_array = new_type_attr_map_array;
-    ebitmap_init(&db->type_attr_map_array[value - 1]);
-    ebitmap_set_bit(&db->type_attr_map_array[value - 1], value - 1, 1);
-
-    db->type_val_to_struct = new_type_val_to_struct;
-    db->type_val_to_struct[value - 1] = type;
-
-    db->sym_val_to_name[SYM_TYPES] = new_val_to_name_types;
-    db->sym_val_to_name[SYM_TYPES][value - 1] = key;
-
-    int i;
-    for (i = 0; i < db->p_roles.nprim; ++i) {
-        ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1,
-                1);
-    }
-
-#ifdef CONFIG_KSU_SUSFS
-    susfs_add_sus_type(type_name, type->value);
-#endif
-    return true;
-#elif defined(CONFIG_IS_HW_HISI)
+#ifdef CONFIG_IS_HW_HISI
 	/*
    * Huawei use type_attr_map and type_val_to_struct.
    * And use ebitmap not flex_array.
@@ -998,6 +1034,7 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
 		ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1, 1);
 	}
 	return true;
+#endif
 #endif
 }
 
@@ -1272,7 +1309,60 @@ int ksu_policydb_fixup_len(struct policydb *db, const char *tag)
     return ret;
 }
 
-#ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
+#if defined(KSU_COMPAT_HAS_SELINUX_POLICY) && defined(SELINUX_HASHTAB_KEY_PARAMS)
+void ksu_destroy_sepolicy(struct selinux_policy *pol)
+{
+    policydb_destroy(&pol->policydb);
+    kfree(pol);
+}
+
+struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
+{
+    struct selinux_policy *new_pol;
+    struct policy_file fp;
+    void *buf;
+    size_t len;
+    int ret;
+
+    if (!old_pol)
+        return NULL;
+
+    new_pol = kzalloc(sizeof(*new_pol), GFP_KERNEL);
+    if (!new_pol)
+        return NULL;
+
+    buf = kvmalloc(old_pol->policydb.len, GFP_KERNEL);
+    if (!buf)
+        goto free_policy;
+
+    /* Copy the policy database independently of the live SID table and map. */
+    fp.data = buf;
+    fp.len = old_pol->policydb.len;
+    ret = policydb_write(&old_pol->policydb, &fp);
+    if (ret)
+        goto free_buffer;
+
+    len = old_pol->policydb.len - fp.len;
+    fp.data = buf;
+    fp.len = len;
+    ret = policydb_read(&new_pol->policydb, &fp);
+    if (ret)
+        goto free_buffer;
+
+    new_pol->policydb.len = len;
+    new_pol->sidtab = old_pol->sidtab;
+    new_pol->map = old_pol->map;
+    new_pol->latest_granting = old_pol->latest_granting;
+    kvfree(buf);
+    return new_pol;
+
+free_buffer:
+    kvfree(buf);
+free_policy:
+    kfree(new_pol);
+    return NULL;
+}
+#elif defined(SELINUX_POLICY_INSTEAD_SELINUX_SS)
 
 // https://github.com/torvalds/linux/commit/581646c3fb98494009671f6d347ea125bc0e663a
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
@@ -1688,8 +1778,11 @@ void ksu_destroy_sepolicy(struct selinux_policy *pol)
 struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol)
 {
     int ret;
-    struct selinux_policy *new_pol =
-        kmemdup(old_pol, sizeof(*old_pol), GFP_ATOMIC);
+    struct selinux_policy *new_pol;
+
+    if (!old_pol)
+        return NULL;
+    new_pol = kmemdup(old_pol, sizeof(*old_pol), GFP_ATOMIC);
     if (!new_pol) {
         return NULL;
     }

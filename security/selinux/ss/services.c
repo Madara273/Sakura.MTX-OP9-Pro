@@ -4077,7 +4077,7 @@ static int susfs_string_to_context_struct(struct policydb *pol,
 
 	*p++ = 0;
 
-	usrdatum = hashtab_search(pol->p_users.table, scontextp);
+	usrdatum = symtab_search(&pol->p_users, scontextp);
 	if (!usrdatum)
 		goto out;
 
@@ -4093,7 +4093,7 @@ static int susfs_string_to_context_struct(struct policydb *pol,
 
 	*p++ = 0;
 
-	role = hashtab_search(pol->p_roles.table, scontextp);
+	role = symtab_search(&pol->p_roles, scontextp);
 	if (!role)
 		goto out;
 	ctx->role = role->value;
@@ -4105,7 +4105,7 @@ static int susfs_string_to_context_struct(struct policydb *pol,
 	oldc = *p;
 	*p++ = 0;
 
-	typdatum = hashtab_search(pol->p_types.table, scontextp);
+	typdatum = symtab_search(&pol->p_types, scontextp);
 	if (!typdatum || typdatum->attribute)
 		goto out;
 
@@ -4132,6 +4132,7 @@ static int susfs_security_context_to_sid_core(struct selinux_state *state,
 					u32 *sid, u32 def_sid, gfp_t gfp_flags,
 					int force)
 {
+	struct selinux_policy *policy;
 	struct policydb *policydb;
 	struct sidtab *sidtab;
 	char *scontext2, *str = NULL;
@@ -4171,9 +4172,9 @@ static int susfs_security_context_to_sid_core(struct selinux_state *state,
 			goto out;
 	}
 	rcu_read_lock();
-	read_lock(&state->ss->policy_rwlock);
-	policydb = &state->ss->policydb;
-	sidtab = state->ss->sidtab;
+	policy = rcu_dereference(state->policy);
+	policydb = &policy->policydb;
+	sidtab = policy->sidtab;
 	rc = susfs_string_to_context_struct(policydb, sidtab, scontext2,
 				      &context, def_sid);
 	if (rc == -EINVAL && force) {
@@ -4182,10 +4183,9 @@ static int susfs_security_context_to_sid_core(struct selinux_state *state,
 		str = NULL;
 	} else if (rc)
 		goto out_unlock;
-	rc = context_struct_to_sid(state, &context, sid);
+	rc = context_struct_to_sid(policy, &context, sid);
 	context_destroy(&context);
 out_unlock:
-	read_unlock(&state->ss->policy_rwlock);
 	rcu_read_unlock();
 out:
 	kfree(scontext2);
@@ -4225,18 +4225,19 @@ void susfs_security_compute_av_user(struct selinux_state *state,
 			      u16 tclass,
 			      struct av_decision *avd)
 {
+	struct selinux_policy *policy;
 	struct policydb *policydb;
 	struct sidtab *sidtab;
 	struct context *scontext = NULL, *tcontext = NULL;
 
 	rcu_read_lock();
-	read_lock(&state->ss->policy_rwlock);
-	avd_init(state, avd);
+	policy = rcu_dereference(state->policy);
+	avd_init(policy, avd);
 	if (!selinux_initialized(state))
 		goto allow;
 
-	policydb = &state->ss->policydb;
-	sidtab = state->ss->sidtab;
+	policydb = &policy->policydb;
+	sidtab = policy->sidtab;
 
 	scontext = sidtab_search(sidtab, ssid);
 	if (!scontext) {
@@ -4266,7 +4267,6 @@ void susfs_security_compute_av_user(struct selinux_state *state,
 				  NULL);
 	susfs_spoof_avd_allowed_rcu(scontext->type, tcontext->type, tclass, &avd->allowed);
  out:
-	read_unlock(&state->ss->policy_rwlock);
 	rcu_read_unlock();
 	return;
 allow:

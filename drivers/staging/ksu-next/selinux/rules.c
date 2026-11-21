@@ -24,30 +24,23 @@
 #include "xfrm.h"
 #include "compat/kernel_compat.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-#define SELINUX_POLICY_INSTEAD_SELINUX_SS
-#endif
-
 #define ALL NULL
 
 static DEFINE_MUTEX(ksu_rules);
 
+#ifndef SELINUX_POLICY_INSTEAD_SELINUX_SS
 static struct policydb *get_policydb(void)
 {
     struct policydb *db;
 #ifdef KSU_COMPAT_USE_SELINUX_STATE
-#ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
-    struct selinux_policy *policy = selinux_state.policy;
-    db = &policy->policydb;
-#else
     struct selinux_ss *ss = selinux_state.ss;
     db = &ss->policydb;
-#endif
 #else
     db = &policydb;
 #endif
     return db;
 }
+#endif
 
 #if ((!defined(KSU_COMPAT_USE_SELINUX_STATE)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
@@ -56,10 +49,8 @@ extern int avc_ss_reset(u32 seqno);
 extern int avc_ss_reset(struct selinux_avc *avc, u32 seqno);
 #endif
 // reset avc cache table, otherwise the new rules will not take effect if already denied
-static void reset_avc_cache()
+static void reset_avc_cache(u32 seqno)
 {
-	u32 seqno = selinux_state.ss ? ++selinux_state.ss->latest_granting : 1;
-
 #if ((!defined(KSU_COMPAT_USE_SELINUX_STATE)) || \
 	LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0))
     avc_ss_reset(seqno);
@@ -175,7 +166,11 @@ static int apply_kernelsu_rules_fn(void *ptr)
     ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "unix_stream_socket", "getattr");
 
     // Older policies label memfd objects using existing file classes.
+#ifdef SELINUX_HASHTAB_KEY_PARAMS
+    if (symtab_search(&db->p_classes, "memfd_file")) {
+#else
     if (hashtab_search(db->p_classes.table, "memfd_file")) {
+#endif
         ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "execute");
         ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "getattr");
         ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "map");
@@ -212,9 +207,11 @@ void apply_kernelsu_rules()
 	}
 
 #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
-	struct selinux_policy *pol, *old_pol = selinux_state.policy;
+	struct selinux_policy *pol, *old_pol;
 	mutex_lock(&selinux_state.policy_mutex);
-	pol = ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+	old_pol = rcu_dereference_protected(selinux_state.policy,
+		lockdep_is_held(&selinux_state.policy_mutex));
+	pol = ksu_dup_sepolicy(old_pol);
 	if (!pol) {
 		pr_err("failed to dup selinux_policy\n");
 		goto out_unlock;
@@ -223,11 +220,13 @@ void apply_kernelsu_rules()
 
 	apply_kernelsu_rules_fn((void *)db);
 
+	ksu_policydb_fixup_len(db, "apply_kernelsu_rules");
+	pol->latest_granting++;
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 
-	reset_avc_cache();
+	reset_avc_cache(pol->latest_granting);
 out_unlock:
 	mutex_unlock(&selinux_state.policy_mutex);
 #else
@@ -264,13 +263,13 @@ do_stop_machine:
 
 out_reset_avc:
 	smp_mb();
-	reset_avc_cache();
+	reset_avc_cache(selinux_state.ss ? ++selinux_state.ss->latest_granting : 1);
+#endif
 #ifdef CONFIG_KSU_SUSFS
 	susfs_set_priv_app_sid();
 	susfs_set_init_sid();
 	susfs_set_ksu_sid();
 	susfs_set_zygote_sid();
-#endif
 #endif
 }
 
@@ -581,9 +580,9 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 
 	mutex_lock(&selinux_state.policy_mutex);
 
-	old_pol = selinux_state.policy;
-	pol = ksu_dup_sepolicy(rcu_dereference_protected(
-		old_pol, lockdep_is_held(&selinux_state.policy_mutex)));
+	old_pol = rcu_dereference_protected(selinux_state.policy,
+		lockdep_is_held(&selinux_state.policy_mutex));
+	pol = ksu_dup_sepolicy(old_pol);
 	if (!pol) {
 		ret = -ENOMEM;
 		goto out_unlock;
@@ -632,11 +631,13 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
 		cmd_index++;
 	}
 
+	ksu_policydb_fixup_len(db, "handle_sepolicy");
+	pol->latest_granting++;
 	rcu_assign_pointer(selinux_state.policy, pol);
 	synchronize_rcu();
 	ksu_destroy_sepolicy(old_pol);
 
-	reset_avc_cache();
+	reset_avc_cache(pol->latest_granting);
 	ret = success_cmd_count;
 	goto out_unlock;
 
@@ -777,7 +778,7 @@ out_done:
 	 * rollback, so a partially failed batch still mutated the policydb and
 	 * a stale AVC cache would keep serving the pre-batch decisions.
 	 */
-	reset_avc_cache();
+	reset_avc_cache(selinux_state.ss ? ++selinux_state.ss->latest_granting : 1);
 
 	if (ret)
 		goto out_free;

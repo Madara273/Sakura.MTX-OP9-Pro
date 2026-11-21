@@ -94,7 +94,7 @@ void selinux_status_update_setenforce(struct selinux_state *state,
 			smp_wmb();
 			status->enforcing = enforcing;
 			smp_wmb();
-			mutex_unlock(&state->ss->status_lock);
+			mutex_unlock(&state->status_lock);
 			return;
 		}
 #endif // #ifdef CONFIG_KSU_SUSFS
@@ -130,7 +130,7 @@ void selinux_status_update_policyload(struct selinux_state *state,
 			status->policyload = seqno;
 			status->deny_unknown = !security_get_allow_unknown(state);
 			smp_wmb();
-			mutex_unlock(&state->ss->status_lock);
+			mutex_unlock(&state->status_lock);
 			return;
 		}
 #endif // #ifdef CONFIG_KSU_SUSFS

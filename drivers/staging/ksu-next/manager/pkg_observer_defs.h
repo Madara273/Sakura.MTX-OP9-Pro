@@ -12,7 +12,8 @@ typedef const unsigned char *ksu_fname_t;
 #define ksu_fname_arg(f) (f)
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+#if defined(KSU_COMPAT_HAS_FSNOTIFY_INODE_EVENT) || \
+    LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
 #define KSU_DECL_FSNOTIFY_OPS(name)                                            \
 	int name(struct fsnotify_mark *mark, u32 mask, struct inode *inode,    \
 		 struct inode *dir, const struct qstr *file_name, u32 cookie)
