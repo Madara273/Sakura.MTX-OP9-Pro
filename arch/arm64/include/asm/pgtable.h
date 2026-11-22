@@ -418,6 +418,8 @@ static inline pmd_t pmd_mkdevmap(pmd_t pmd)
 #define set_pud_at(mm, addr, pudp, pud)	set_pte_at(mm, addr, (pte_t *)pudp, pud_pte(pud))
 
 #define __pgd_to_phys(pgd)	__pte_to_phys(pgd_pte(pgd))
+/* P4D is folded into PGD on this ARM64 page-table layout. */
+#define __p4d_to_phys(p4d)	__pgd_to_phys(__pgd(p4d_val(p4d)))
 #define __phys_to_pgd_val(phys)	__phys_to_pte_val(phys)
 
 #define __pgprot_modify(prot,mask,bits) \
