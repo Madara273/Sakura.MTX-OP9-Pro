@@ -638,9 +638,18 @@ static inline bool elv_support_iosched(struct request_queue *q)
  */
 static struct elevator_type *elevator_get_default(struct request_queue *q)
 {
+#ifdef CONFIG_MQ_IOSCHED_SAKURA_DEFAULT
+	struct elevator_type *e;
+#endif
+
 	if (q->nr_hw_queues != 1)
 		return NULL;
 
+#ifdef CONFIG_MQ_IOSCHED_SAKURA_DEFAULT
+	e = elevator_get(q, "sakura", false);
+	if (e)
+		return e;
+#endif
 #ifdef CONFIG_MQ_IOSCHED_SSG
 	return elevator_get(q, "ssg", false);
 #else

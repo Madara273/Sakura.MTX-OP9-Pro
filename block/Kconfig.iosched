@@ -55,6 +55,22 @@ config MQ_IOSCHED_SSG
 	---help---
 	  SamSung Generic IO scheduler.
 
+config MQ_IOSCHED_SAKURA
+	bool "sakura flash I/O scheduler"
+	depends on 64BIT
+	help
+	  A flash-oriented blk-mq scheduler with bounded read preference,
+	  deadline aging and adaptive background write concurrency. Pure
+	  read or write workloads are not subject to adaptive dispatch limits.
+	  Includes I/O priority classes and per-device sysfs controls.
+
+config MQ_IOSCHED_SAKURA_DEFAULT
+	bool "Use sakura as the default I/O scheduler"
+	depends on MQ_IOSCHED_SAKURA
+	help
+	  Select sakura initially on devices with a single hardware queue.
+	  Other built-in schedulers remain available for runtime selection.
+
 config MQ_IOSCHED_SSG_CGROUP
 	tristate "Control Group for SamSung Generic I/O scheduler"
 	default y
