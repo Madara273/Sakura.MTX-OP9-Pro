@@ -624,7 +624,7 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 
 		/* There should be enough young pte to collapse the page */
 		if (pte_young(pteval) ||
-		    page_is_young(page) || PageReferenced(page) ||
+		    page_is_young(page) || page_check_lru_refs(page) ||
 		    mmu_notifier_test_young(vma->vm_mm, address))
 			referenced++;
 	}
@@ -1226,7 +1226,7 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
 			goto out_unmap;
 		}
 		if (pte_young(pteval) ||
-		    page_is_young(page) || PageReferenced(page) ||
+		    page_is_young(page) || page_check_lru_refs(page) ||
 		    mmu_notifier_test_young(vma->vm_mm, _address))
 			referenced++;
 	}

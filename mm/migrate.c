@@ -602,8 +602,7 @@ void migrate_page_states(struct page *newpage, struct page *page)
 
 	if (PageError(page))
 		SetPageError(newpage);
-	if (PageReferenced(page))
-		SetPageReferenced(newpage);
+	page_migrate_lru_refs(newpage, page);
 	if (PageUptodate(page))
 		SetPageUptodate(newpage);
 	if (TestClearPageActive(page)) {
@@ -611,8 +610,6 @@ void migrate_page_states(struct page *newpage, struct page *page)
 		SetPageActive(newpage);
 	} else if (TestClearPageUnevictable(page))
 		SetPageUnevictable(newpage);
-	if (PageWorkingset(page))
-		SetPageWorkingset(newpage);
 	if (PageChecked(page))
 		SetPageChecked(newpage);
 	if (PageMappedToDisk(page))

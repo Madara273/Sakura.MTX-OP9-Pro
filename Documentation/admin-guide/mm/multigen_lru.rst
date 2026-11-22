@@ -149,8 +149,7 @@ generations less than or equal to ``min_gen_nr``.
     ``- memcg_id node_id min_gen_nr [swappiness [nr_to_reclaim]]``
 
 ``min_gen_nr`` should be less than ``max_gen_nr-1``, since
-``max_gen_nr`` and ``max_gen_nr-1`` are not fully aged (equivalent to
-the active list) and therefore cannot be evicted. ``swappiness``
+``max_gen_nr`` and ``max_gen_nr-1`` are not fully aged and therefore cannot be evicted. ``swappiness``
 overrides the default value in ``/proc/sys/vm/swappiness``.
 ``nr_to_reclaim`` limits the number of pages to evict.
 
@@ -160,3 +159,22 @@ cold pages because of the overestimation, it retries on the next
 server according to the ranking result obtained from the working set
 estimation step. This less forceful approach limits the impacts on the
 existing jobs.
+
+Frequency guidance on the page-based backport
+-----------------
+
+This tree adapts the MGLRU-FG v5 series to the Linux 5.4 ``struct page``
+interfaces. Reference counts use PG_referenced as bit 0, PG_workingset as
+bit 1, and one additional page flag as bit 2. Counts 0/1 belong to tier 0,
+2 to tier 1, 3/4 to tier 2, and 5/6/7 to tier 3. A reused page retains a
+workingset floor until an explicit cold hint resets it.
+
+Mapped access promotes a second reference, or an executable file's first
+reference, to the youngest generation. The first mapped reference defers
+eviction of an old generation. File access defers eviction of reused pages
+in the two oldest generations and promotes on counter overflow elsewhere.
+Promotion caps refs at 3; PID protection caps them at 2. The youngest
+generation saturates at 7. Active/inactive vmstat accounting follows refs
+at or above 3, independently of generation aging.
+
+The series is adapted as follows (numbers refer to upstream v5)

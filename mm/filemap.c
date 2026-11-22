@@ -10,6 +10,7 @@
  * most "normal" filesystems (but you don't /have/ to use this:
  * the NFS filesystem used to do this differently, for example)
  */
+#include <linux/mm_inline.h>
 #include <linux/export.h>
 #include <linux/compiler.h>
 #include <linux/dax.h>
@@ -1242,7 +1243,7 @@ static inline int wait_on_page_bit_common(wait_queue_head_t *q,
 	unsigned long pflags;
 
 	if (bit_nr == PG_locked &&
-	    !PageUptodate(page) && PageWorkingset(page)) {
+	    !PageUptodate(page) && page_test_workingset(page)) {
 		if (!PageSwapBacked(page)) {
 			delayacct_thrashing_start();
 			delayacct = true;

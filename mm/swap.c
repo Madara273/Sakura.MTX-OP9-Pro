@@ -357,41 +357,6 @@ static void __lru_cache_activate_page(struct page *page)
 	put_cpu_var(lru_add_pvec);
 }
 
-#ifdef CONFIG_LRU_GEN
-static void page_inc_refs(struct page *page)
-{
-	unsigned long new_flags, old_flags;
-
-	if (PageUnevictable(page))
-		return;
-
-	if (!PageReferenced(page)) {
-		SetPageReferenced(page);
-		return;
-	}
-
-	if (!PageWorkingset(page)) {
-		SetPageWorkingset(page);
-		return;
-	}
-
-	/* see the comment on MAX_NR_TIERS */
-	do {
-		old_flags = READ_ONCE(page->flags);
-		new_flags = old_flags & LRU_REFS_MASK;
-		if (new_flags == LRU_REFS_MASK)
-			break;
-
-		new_flags += BIT(LRU_REFS_PGOFF);
-		new_flags |= old_flags & ~LRU_REFS_MASK;
-	} while (cmpxchg(&page->flags, old_flags, new_flags) != old_flags);
-}
-#else
-static void page_inc_refs(struct page *page)
-{
-}
-#endif /* CONFIG_LRU_GEN */
-
 /*
  * Mark a page as having seen activity.
  *
@@ -406,8 +371,9 @@ void mark_page_accessed(struct page *page)
 {
 	page = compound_head(page);
 
-	if (lru_gen_enabled()) {
-		page_inc_refs(page);
+	if (lru_gen_enabled() || lru_get_gen_flags(READ_ONCE(page->flags)) >= 0) {
+		if (!PageUnevictable(page))
+			page_inc_lru_refs(page, 0);
 		return;
 	}
 
@@ -477,11 +443,6 @@ void lru_cache_add(struct page *page)
 {
 	VM_BUG_ON_PAGE(PageActive(page) && PageUnevictable(page), page);
 	VM_BUG_ON_PAGE(PageLRU(page), page);
-
-	/* see the comment in lru_gen_add_page() */
-	if (lru_gen_enabled() && !PageUnevictable(page) &&
-	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
-		SetPageActive(page);
 
 	__lru_cache_add(page);
 }
@@ -558,7 +519,10 @@ static void lru_deactivate_file_fn(struct page *page, struct lruvec *lruvec,
 
 	del_page_from_lru_list(page, lruvec);
 	ClearPageActive(page);
-	ClearPageReferenced(page);
+	if (lru_gen_enabled())
+		__page_set_lru_refs(page, 0);
+	else
+		ClearPageReferenced(page);
 
 	if (PageWriteback(page) || PageDirty(page)) {
 		/*
@@ -590,7 +554,10 @@ static void lru_deactivate_fn(struct page *page, struct lruvec *lruvec,
 
 		del_page_from_lru_list(page, lruvec);
 		ClearPageActive(page);
-		ClearPageReferenced(page);
+		if (lru_gen_enabled())
+			__page_set_lru_refs(page, 0);
+		else
+			ClearPageReferenced(page);
 		add_page_to_lru_list(page, lruvec);
 
 		__count_vm_events(PGDEACTIVATE, hpage_nr_pages(page));
@@ -606,7 +573,10 @@ static void lru_lazyfree_fn(struct page *page, struct lruvec *lruvec,
 
 		del_page_from_lru_list(page, lruvec);
 		ClearPageActive(page);
-		ClearPageReferenced(page);
+		if (lru_gen_enabled())
+			__page_set_lru_refs(page, 0);
+		else
+			ClearPageReferenced(page);
 		/*
 		 * lazyfree pages are clean anonymous pages. They have
 		 * SwapBacked flag cleared to distinguish normal anonymous
@@ -669,6 +639,10 @@ void lru_add_drain_cpu(int cpu)
  */
 void deactivate_file_page(struct page *page)
 {
+	if (lru_gen_enabled() && !PageUnevictable(page) && PageLRU(page) &&
+	    !page_reset_lru_refs(page))
+		return;
+
 	/*
 	 * In a workload with many unevictable page such as mprotect,
 	 * unevictable page deactivation for accelerating reclaim is pointless.
@@ -695,6 +669,10 @@ void deactivate_file_page(struct page *page)
  */
 void deactivate_page(struct page *page)
 {
+	if (lru_gen_enabled() && !PageUnevictable(page) && PageLRU(page) &&
+	    !page_reset_lru_refs(page))
+		return;
+
 	if (PageLRU(page) && !PageUnevictable(page) && (PageActive(page) || lru_gen_enabled())) {
 		struct pagevec *pvec = &get_cpu_var(lru_deactivate_pvecs);
 

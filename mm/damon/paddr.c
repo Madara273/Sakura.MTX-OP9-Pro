@@ -7,6 +7,7 @@
 
 #define pr_fmt(fmt) "damon-pa: " fmt
 
+#include <linux/mm_inline.h>
 #include <linux/mmu_notifier.h>
 #include <linux/page_idle.h>
 #include <linux/pagemap.h>
@@ -228,7 +229,8 @@ int damon_pa_apply_scheme(struct damon_ctx *ctx, struct damon_target *t,
 		if (!page)
 			continue;
 
-		ClearPageReferenced(page);
+		/* The region is cold; discard the complete LRU access count. */
+		page_clear_lru_refs(page);
 		test_and_clear_page_young(page);
 		if (isolate_lru_page(page)) {
 			put_page(page);

@@ -215,6 +215,9 @@ static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 
 #ifdef CONFIG_LRU_GEN
 
+/* Low bit uses pack_shadow()'s workingset slot. */
+#define LRU_REFS_BITS (LRU_REFS_WIDTH + 1)
+
 void *lru_gen_eviction(struct page *page)
 {
 	int hist;
@@ -232,17 +235,17 @@ void *lru_gen_eviction(struct page *page)
 	if (!mem_cgroup_disabled() && !memcg)
 		return NULL;
 
-	BUILD_BUG_ON(LRU_GEN_WIDTH + LRU_REFS_WIDTH > BITS_PER_LONG - EVICTION_SHIFT);
+	BUILD_BUG_ON(LRU_GEN_WIDTH + LRU_REFS_BITS > BITS_PER_LONG - EVICTION_SHIFT);
 
 	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	lrugen = &lruvec->lrugen;
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
-	token = (min_seq << LRU_REFS_WIDTH) | max(refs - 1, 0);
+	token = (min_seq << LRU_REFS_BITS) | (refs >> 1);
 
 	hist = lru_hist_from_seq(min_seq);
 	atomic_long_add(delta, &lrugen->evicted[hist][type][tier]);
 
-	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs);
+	return pack_shadow(mem_cgroup_id(memcg), pgdat, token, refs & 1);
 }
 
 void lru_gen_refault(struct page *page, void *shadow)
@@ -276,28 +279,24 @@ void lru_gen_refault(struct page *page, void *shadow)
 	mod_lruvec_state(lruvec, WORKINGSET_REFAULT, delta);
 
 	min_seq = READ_ONCE(lrugen->min_seq[type]);
-	if ((token >> LRU_REFS_WIDTH) != (min_seq & (EVICTION_MASK >> LRU_REFS_WIDTH)))
+	if ((token >> LRU_REFS_BITS) != (min_seq & (EVICTION_MASK >> LRU_REFS_BITS)))
 		goto unlock;
 
 	hist = lru_hist_from_seq(min_seq);
-	/* see the comment in page_lru_refs() */
-	refs = (token & (BIT(LRU_REFS_WIDTH) - 1)) + workingset;
+	/* Recombine the reference count split by pack_shadow(). */
+	refs = ((token & (BIT(LRU_REFS_BITS) - 1)) << 1) | workingset;
 	tier = lru_tier_from_refs(refs);
 
 	atomic_long_add(delta, &lrugen->refaulted[hist][type][tier]);
-	mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE, delta);
-
-	/*
-	 * Count the following two cases as stalls:
-	 * 1. For pages accessed through page tables, hotter pages pushed out
-	 *    hot pages which refaulted immediately.
-	 * 2. For pages accessed multiple times through file descriptors,
-	 *    numbers of accesses might have been out of the range.
-	 */
-	if (lru_gen_in_fault() || refs == BIT(LRU_REFS_WIDTH)) {
-		SetPageWorkingset(page);
-		mod_lruvec_state(lruvec, WORKINGSET_RESTORE, delta);
+	if (refs >= LRU_REFS_REFERENCED) {
+		if (lru_gen_in_fault()) {
+			SetPageActive(page);
+			mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE, delta);
+		}
+		__page_set_lru_refs(page, min_t(unsigned int, refs, LRU_REFS_PROTECTED));
 	}
+	if (lru_refs_is_workingset(refs))
+		mod_lruvec_state(lruvec, WORKINGSET_RESTORE, delta);
 unlock:
 	rcu_read_unlock();
 }
@@ -341,7 +340,7 @@ void *workingset_eviction(struct page *page)
 	lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	eviction = atomic_long_inc_return(&lruvec->inactive_age);
 	eviction >>= bucket_order;
-	return pack_shadow(memcgid, pgdat, eviction, PageWorkingset(page));
+	return pack_shadow(memcgid, pgdat, eviction, page_test_workingset(page));
 }
 
 /**
