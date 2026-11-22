@@ -284,9 +284,11 @@ int ksu_lsm_hook(struct ksu_lsm_hook *hook)
         goto out_unlock;
     }
     unsigned long heads_size = sizeof(struct security_hook_heads);
+#ifdef MODULE
     if (!kallsyms_lookup_size_offset(heads_addr, &heads_size, NULL)) {
         pr_warn("lookup head size failed");
     }
+#endif
 
     head = (struct hlist_head *)heads_addr;
     struct hlist_head *head_end = (struct hlist_head *)(heads_addr + heads_size);

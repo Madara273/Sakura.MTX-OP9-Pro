@@ -36,6 +36,10 @@
 #include "policy/feature.h"
 #include "hook/lsm_hook.h"
 
+#if defined(CONFIG_KSU) && !defined(MODULE)
+extern bool ksu_selinux_enforce_spoofed(void);
+#endif
+
 static DEFINE_MUTEX(selinux_hide_mutex);
 static bool ksu_selinux_hide_enabled __read_mostly = false;
 static bool ksu_selinux_hide_running __read_mostly = false;
@@ -445,6 +449,11 @@ static struct page *fake_status = NULL;
 
 static void initialize_fake_status()
 {
+    bool enforce_spoofed = false;
+
+#if defined(CONFIG_KSU) && !defined(MODULE)
+    enforce_spoofed = ksu_selinux_enforce_spoofed();
+#endif
     mutex_lock(&selinux_state.status_lock);
     if (fake_status)
         goto out;
@@ -454,7 +463,7 @@ static void initialize_fake_status()
     }
 
     struct selinux_kernel_status *status = page_address(selinux_state.status_page);
-    if (!status->enforcing && !ksu_late_loaded) {
+    if (!status->enforcing && !ksu_late_loaded && !enforce_spoofed) {
         pr_warn("initialize_fake_status: skip not enforcing\n");
         goto out;
     }
@@ -467,7 +476,9 @@ static void initialize_fake_status()
 
     struct selinux_kernel_status *new_status = page_address(new_page);
     memcpy(new_status, status, sizeof(*status));
-    if (ksu_late_loaded) {
+    if (ksu_late_loaded || enforce_spoofed) {
+        // The built-in enforce override also needs a stock-looking snapshot
+        // without changing the real SELinux mode.
         // In late_load mode the loader may have reloaded sepolicy before us,
         // so the captured page is not stock. Serve what a stock boot ends
         // with instead: creation sentinel below 6.10, one load plus one
@@ -533,10 +544,12 @@ static int ksu_selinux_hide_enable()
     }
     hook_selinux_status_open();
 
+#ifdef CONFIG_AUDIT
     security_dump_masked_av_fn = find_kernel_symbol_exact("security_dump_masked_av");
     if (!security_dump_masked_av_fn) {
         pr_warn("security_dump_masked_av not found!\n");
     }
+#endif
     context_struct_compute_av_fn = find_kernel_symbol_exact("context_struct_compute_av");
     if (!context_struct_compute_av_fn) {
         pr_warn("context_struct_compute_av not found!\n");

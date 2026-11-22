@@ -5,6 +5,13 @@
 #include <linux/sched.h>
 #include <linux/thread_info.h>
 
+#ifdef CONFIG_KSU_SYSCALL_TABLE_HOOK
+/* Direct table hooks apply globally and do not use per-task tracepoint marks. */
+static inline void ksu_mark_running_process(void) {}
+static inline void ksu_set_task_tracepoint_flag(struct task_struct *t) {}
+static inline void ksu_clear_task_tracepoint_flag(struct task_struct *t) {}
+static inline void ksu_clear_task_tracepoint_flag_if_needed(struct task_struct *t) {}
+#else
 // Process marking for tracepoint
 void ksu_mark_all_process(void);
 void ksu_unmark_all_process(void);
@@ -44,4 +51,5 @@ void ksu_tp_marker_unlock(unsigned long *flags);
 void ksu_tp_marker_inc_reg_count(void);
 void ksu_tp_marker_dec_reg_count(void);
 
+#endif /* CONFIG_KSU_SYSCALL_TABLE_HOOK */
 #endif

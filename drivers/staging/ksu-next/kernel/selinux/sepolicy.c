@@ -83,7 +83,7 @@ static u32 ksu_original_types_generation;
 
 // htable is a struct instead of pointer above 5.8.0:
 // https://elixir.bootlin.com/linux/v5.8-rc1/source/security/selinux/ss/symtab.h
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0) || defined(SELINUX_HASHTAB_KEY_PARAMS)
 #define ksu_hashtab_for_each(htab, cur)                                        \
     ksu_hash_for_each(htab.htable, htab.size, cur)
 #else
@@ -93,7 +93,7 @@ static u32 ksu_original_types_generation;
 
 // symtab_search is introduced on 5.9.0:
 // https://elixir.bootlin.com/linux/v5.9-rc1/source/security/selinux/ss/symtab.h
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0) && !defined(SELINUX_HASHTAB_KEY_PARAMS)
 #define symtab_search(s, name) hashtab_search((s)->table, name)
 #define symtab_insert(s, name, datum) hashtab_insert((s)->table, name, datum)
 #endif
@@ -525,7 +525,7 @@ static bool add_type_rule(struct policydb *db, const char *s, const char *t,
 // 5.9.0 : static inline int hashtab_insert(struct hashtab *h, void *key, void
 // *datum, struct hashtab_key_params key_params) 5.8.0: int
 // hashtab_insert(struct hashtab *h, void *k, void *d);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0) || defined(SELINUX_HASHTAB_KEY_PARAMS)
 static u32 filenametr_hash(const void *k)
 {
     const struct filename_trans_key *ft = k;

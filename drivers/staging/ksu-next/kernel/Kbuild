@@ -8,11 +8,20 @@ kernelsu-objs += feature/sucompat.o
 kernelsu-objs += hook/lsm_hook.o
 kernelsu-objs += hook/setuid_hook.o
 kernelsu-objs += hook/syscall_event_bridge.o
+
+ifeq ($(CONFIG_KSU_SYSCALL_TABLE_HOOK),y)
+kernelsu-objs += hook/lsm_manual.o
+kernelsu-objs += hook/direct_syscall_table.o hook/syscall_table_manager.o
+else
 kernelsu-objs += hook/syscall_hook_manager.o
 kernelsu-objs += hook/tp_marker.o
+endif
+
 ifeq ($(CONFIG_ARM64),y)
 kernelsu-objs += hook/arm64/patch_memory.o
+ifneq ($(CONFIG_KSU_SYSCALL_TABLE_HOOK),y)
 kernelsu-objs += hook/arm64/syscall_hook.o
+endif
 else ifeq ($(CONFIG_X86_64),y)
 kernelsu-objs += hook/x86_64/patch_memory.o
 kernelsu-objs += hook/x86_64/syscall_hook.o
@@ -209,3 +218,8 @@ ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-mis
 ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable
 
 # Keep a new line here!! Because someone may append config
+
+ccflags-y += -DKSU_HAS_FSNOTIFY_INODE_EVENT
+
+ccflags-y += -DKSU_COMPAT_USE_SELINUX_STATE
+ccflags-y += -DKSU_HAS_NO_ITERATE

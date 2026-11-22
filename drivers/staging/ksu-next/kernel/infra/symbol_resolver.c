@@ -10,6 +10,11 @@
 
 #include "infra/symbol_resolver.h"
 
+#if defined(CONFIG_KSU) && !defined(MODULE)
+#include <linux/lsm_hooks.h>
+extern unsigned long ksu_selinuxfs_symbol(const char *name);
+#endif
+
 // https://github.com/torvalds/linux/commit/89245600941e4e0f87d77f60ee269b5e61ef4e49
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 #define USE_KCFI 1
@@ -62,6 +67,14 @@ struct ksu_lookup_symbol_ctx {
 unsigned long __nocfi find_kernel_symbol_exact(const char *symbol_name)
 {
     unsigned long addr = 0;
+#if defined(CONFIG_KSU) && !defined(MODULE)
+    /* These data symbols are absent from kallsyms without KALLSYMS_ALL. */
+    if (!strcmp(symbol_name, "security_hook_heads"))
+        return (unsigned long)&security_hook_heads;
+    addr = ksu_selinuxfs_symbol(symbol_name);
+    if (addr)
+        return addr;
+#endif
 #if HAVE_ON_EACH_MATCH_SYMBOL
     if (likely(kallsyms_on_each_match_symbol_fn)) {
         kallsyms_on_each_match_symbol_fn(find_kernel_symbol_exact_cb, symbol_name, &addr);

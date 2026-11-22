@@ -152,12 +152,12 @@ bool ksu_preinit_handle_execve(const char __user **filename_user, const char __u
     }
 
     pr_info("preinit: exec runner via %s\n", fd_path);
-    *ret = ksu_syscall_table[orig_nr](regs);
+    *ret = ksu_call_original_syscall(orig_nr, regs);
     if (*ret < 0) {
         pr_err("preinit: exec runner failed: %ld, booting without preinit\n", *ret);
         *filename_user = orig_filename;
         ksu_close_fd(fd);
-        *ret = ksu_syscall_table[orig_nr](regs);
+        *ret = ksu_call_original_syscall(orig_nr, regs);
     }
     return true;
 }

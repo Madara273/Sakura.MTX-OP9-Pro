@@ -20,6 +20,7 @@
 #include "manager/manager_identity.h"
 
 #include "sulog/event.h"
+#include "hook/syscall_hook.h"
 
 uint32_t ksuver_override = 0;
 
@@ -119,18 +120,20 @@ static void ksu_install_fd_tw_func(struct callback_head *cb)
     kfree(tw);
 }
 
-static int reboot_handler_pre(struct kprobe *p, struct pt_regs *regs)
+static int ksu_handle_reboot_command(int magic1, int magic2, unsigned int cmd, unsigned long arg4)
 {
-    struct pt_regs *real_regs = PT_REAL_REGS(regs);
-    int magic1 = (int)PT_REGS_SYSCALL_PARM1(real_regs);
-    int magic2 = (int)PT_REGS_PARM2(real_regs);
-    unsigned int cmd = (unsigned int)PT_REGS_PARM3(real_regs);
-    unsigned long arg4 = (unsigned long)PT_REGS_SYSCALL_PARM4(real_regs);
-    unsigned long reply = (unsigned long)arg4;
+    unsigned long reply = arg4;
+
+    if (magic1 != KSU_INSTALL_MAGIC1)
+        return 0;
+
 
     /* Check if this is a request to install KSU fd */
     if (magic1 == KSU_INSTALL_MAGIC1 && magic2 == KSU_INSTALL_MAGIC2) {
         struct ksu_install_fd_tw *tw;
+
+        if (current_uid().val != 0 && !allowed_for_su())
+            return 0;
 
         tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
         if (!tw)
@@ -261,27 +264,57 @@ static int reboot_handler_pre(struct kprobe *p, struct pt_regs *regs)
     return 0;
 }
 
+#ifndef CONFIG_KSU_SYSCALL_TABLE_HOOK
+static int reboot_handler_pre(struct kprobe *p, struct pt_regs *regs)
+{
+    struct pt_regs *real_regs = PT_REAL_REGS(regs);
+    int magic1 = (int)PT_REGS_SYSCALL_PARM1(real_regs);
+    int magic2 = (int)PT_REGS_PARM2(real_regs);
+    unsigned int cmd = (unsigned int)PT_REGS_PARM3(real_regs);
+    unsigned long arg4 = (unsigned long)PT_REGS_SYSCALL_PARM4(real_regs);
+
+    return ksu_handle_reboot_command(magic1, magic2, cmd, arg4);
+}
+
 static struct kprobe reboot_kp = {
     .symbol_name = REBOOT_SYMBOL,
     .pre_handler = reboot_handler_pre,
 };
+#else
+static long __nocfi table_reboot(const struct pt_regs *regs)
+{
+    ksu_handle_reboot_command((int)PT_REGS_SYSCALL_PARM1(regs),
+                              (int)PT_REGS_PARM2(regs),
+                              (unsigned int)PT_REGS_PARM3(regs),
+                              (unsigned long)PT_REGS_SYSCALL_PARM4(regs));
+    return ksu_call_original_syscall(__NR_reboot, regs);
+}
+#endif
 
 void __init ksu_supercalls_init(void)
 {
+#ifndef CONFIG_KSU_SYSCALL_TABLE_HOOK
     int rc;
+#endif
 
     ksu_supercall_dump_commands();
 
+#ifdef CONFIG_KSU_SYSCALL_TABLE_HOOK
+    ksu_syscall_table_hook(__NR_reboot, table_reboot, NULL);
+#else
     rc = register_kprobe(&reboot_kp);
     if (rc) {
         pr_err("reboot kprobe failed: %d\n", rc);
     } else {
         pr_info("reboot kprobe registered successfully\n");
     }
+#endif
 }
 
 void __exit ksu_supercalls_exit(void)
 {
+#ifndef CONFIG_KSU_SYSCALL_TABLE_HOOK
     unregister_kprobe(&reboot_kp);
+#endif
     ksu_supercall_cleanup_state();
 }

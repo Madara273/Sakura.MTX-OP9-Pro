@@ -851,6 +851,30 @@ static ssize_t (*const write_op[])(struct file *, char *, size_t) = {
 	[SEL_CONTEXT] = sel_write_context,
 };
 
+#ifdef CONFIG_KSU
+bool ksu_selinux_enforce_spoofed(void);
+bool ksu_selinux_enforce_spoofed(void)
+{
+#ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+	return READ_ONCE(sel_enforce_ops.read) == sel_read_enforce_spoof &&
+		get_boot_mode() == MSM_BOOT_MODE_NORMAL;
+#else
+	return false;
+#endif
+}
+
+/* Built-in KSU also works without DEBUG_KERNEL / KALLSYMS_ALL. */
+unsigned long ksu_selinuxfs_symbol(const char *name);
+unsigned long ksu_selinuxfs_symbol(const char *name)
+{
+	if (!strcmp(name, "write_op"))
+		return (unsigned long)write_op;
+	if (!strcmp(name, "sel_handle_status_ops"))
+		return (unsigned long)&sel_handle_status_ops;
+	return 0;
+}
+#endif
+
 static ssize_t selinux_transaction_write(struct file *file, const char __user *buf, size_t size, loff_t *pos)
 {
 	ino_t ino = file_inode(file)->i_ino;

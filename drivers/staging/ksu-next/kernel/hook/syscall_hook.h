@@ -12,6 +12,7 @@ extern syscall_fn_t *ksu_syscall_table;
 
 // Dispatcher slot number in syscall table
 extern int ksu_dispatcher_nr;
+long ksu_call_original_syscall(int nr, const struct pt_regs *regs);
 
 // Syscall hook handler type.
 // orig_nr: the original syscall number before redirection

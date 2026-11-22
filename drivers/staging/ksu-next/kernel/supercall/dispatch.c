@@ -469,6 +469,9 @@ static int do_get_wrapper_fd(void __user *arg)
 
 static int do_manage_mark(void __user *arg)
 {
+#ifdef CONFIG_KSU_SYSCALL_TABLE_HOOK
+    return -EOPNOTSUPP;
+#else
     struct ksu_manage_mark_cmd cmd;
     int ret = 0;
 
@@ -528,6 +531,7 @@ static int do_manage_mark(void __user *arg)
     }
 
     return 0;
+#endif
 }
 
 static int do_nuke_ext4_sysfs(void __user *arg)
@@ -722,10 +726,10 @@ static int do_get_hook_mode(void __user *arg)
 {
     struct ksu_get_hook_mode_cmd cmd = {0};
 
-#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+#if defined(CONFIG_HAVE_SYSCALL_TRACEPOINTS) && !defined(CONFIG_KSU_SYSCALL_TABLE_HOOK)
     strscpy(cmd.mode, "Tracepoint", sizeof(cmd.mode));
 #else
-    strscpy(cmd.mode, "Kprobes", sizeof(cmd.mode));
+    strscpy(cmd.mode, "Syscall Table", sizeof(cmd.mode));
 #endif
 
     if (copy_to_user(arg, &cmd, sizeof(cmd))) {

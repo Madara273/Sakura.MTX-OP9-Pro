@@ -44,13 +44,15 @@ unsigned long phys_from_virt(unsigned long addr, int *err)
 #endif
 
     pud = pud_offset(p4d, addr);
-    if (pud_none(*pud) || pud_bad(*pud))
+    if (pud_none(*pud))
         goto fail;
 #if defined(pud_leaf)
     if (pud_leaf(*pud)) {
         return __pud_to_phys(*pud) + ((addr & ~PUD_MASK));
     }
 #endif
+    if (pud_bad(*pud))
+        goto fail;
 
     pmd = pmd_offset(pud, addr);
 #if defined(pmd_leaf)

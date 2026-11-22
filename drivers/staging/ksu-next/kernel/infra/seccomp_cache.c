@@ -1,4 +1,5 @@
 #include <linux/version.h>
+#include <asm/unistd.h>
 #include <linux/fs.h>
 #include <linux/nsproxy.h>
 #include <linux/sched/task.h>
@@ -41,6 +42,11 @@ void ksu_seccomp_clear_cache(struct seccomp_filter *filter, int nr)
     }
 
 #ifdef SECCOMP_ARCH_COMPAT
+#ifdef CONFIG_ARM64
+    /* ARM EABI reboot is syscall 88, while AArch64 uses __NR_reboot. */
+    if (nr == __NR_reboot)
+        nr = 88;
+#endif
     if (nr >= 0 && nr < SECCOMP_ARCH_COMPAT_NR) {
         clear_bit(nr, filter->cache.allow_compat);
     }
@@ -58,6 +64,11 @@ void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr)
     }
 
 #ifdef SECCOMP_ARCH_COMPAT
+#ifdef CONFIG_ARM64
+    /* ARM EABI reboot is syscall 88, while AArch64 uses __NR_reboot. */
+    if (nr == __NR_reboot)
+        nr = 88;
+#endif
     if (nr >= 0 && nr < SECCOMP_ARCH_COMPAT_NR) {
         set_bit(nr, filter->cache.allow_compat);
     }

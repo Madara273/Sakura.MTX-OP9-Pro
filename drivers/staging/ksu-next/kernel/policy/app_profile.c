@@ -127,8 +127,10 @@ int escape_with_root_profile(void)
 {
     int ret = 0;
     struct cred *cred;
+#ifndef CONFIG_KSU_SYSCALL_TABLE_HOOK
     struct task_struct *p = current;
     struct task_struct *t;
+#endif
     struct root_profile *profile = NULL;
     struct user_struct *new_user;
 
@@ -211,9 +213,11 @@ int escape_with_root_profile(void)
         set_thread_flag(TIF_KSU_DISABLE_ESCAPE_WITH_ROOT);
     }
 
+#ifndef CONFIG_KSU_SYSCALL_TABLE_HOOK
     for_each_thread (p, t) {
         ksu_set_task_tracepoint_flag(t);
     }
+#endif
 
     setup_mount_ns(profile->namespaces);
     ksu_put_root_profile(profile);

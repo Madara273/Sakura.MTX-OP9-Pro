@@ -74,6 +74,10 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 #define NEED_OWN_STACKPROTECTOR 0
 #endif
 
+#ifdef CONFIG_KSU_SYSCALL_TABLE_HOOK
+void __init ksu_lsm_manual_init(void);
+#endif
+
 struct cred *ksu_cred;
 bool ksu_late_loaded;
 
@@ -154,6 +158,11 @@ int __init kernelsu_init(void)
 
 	ksu_syscall_hook_init();
 
+	if (!ksu_syscall_table) {
+		put_cred(ksu_cred);
+		ksu_cred = NULL;
+		return -ENOMEM;
+	}
 	// Block modules early, before vendor modules are loaded in second stage.
 	ksu_module_blacklist_init();
 
@@ -161,6 +170,9 @@ int __init kernelsu_init(void)
 	ksu_sulog_init();
 	ksu_adb_root_init();
 	ksu_lsm_hook_init();
+#ifdef CONFIG_KSU_SYSCALL_TABLE_HOOK
+	ksu_lsm_manual_init();
+#endif
 	ksu_selinux_hide_init();
 	ksu_shell_su_adb_only_init();
 
