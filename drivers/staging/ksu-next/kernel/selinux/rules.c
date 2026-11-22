@@ -14,6 +14,9 @@
 #include "ss/services.h"
 #include "linux/lsm_audit.h" // IWYU pragma: keep
 #include "xfrm.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 
 struct selinux_policy *backup_sepolicy;
 
@@ -181,6 +184,9 @@ void apply_kernelsu_rules()
     reset_avc_cache(pol->latest_granting);
 out_unlock:
     mutex_unlock(&selinux_state.policy_mutex);
+#ifdef CONFIG_KSU_SUSFS
+    susfs_update_sids();
+#endif
 }
 
 #define KSU_SEPOLICY_MAX_BATCH_SIZE (8U * 1024U * 1024U)

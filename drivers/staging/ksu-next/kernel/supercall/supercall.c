@@ -21,6 +21,9 @@
 
 #include "sulog/event.h"
 #include "hook/syscall_hook.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 
 uint32_t ksuver_override = 0;
 
@@ -127,6 +130,14 @@ static int ksu_handle_reboot_command(int magic1, int magic2, unsigned int cmd, u
     if (magic1 != KSU_INSTALL_MAGIC1)
         return 0;
 
+#ifdef CONFIG_KSU_SUSFS
+    if (magic2 == SUSFS_MAGIC && current_uid().val == 0) {
+        void __user *arg = (void __user *)arg4;
+
+        susfs_handle_command(cmd, &arg);
+        return 0;
+    }
+#endif
 
     /* Check if this is a request to install KSU fd */
     if (magic1 == KSU_INSTALL_MAGIC1 && magic2 == KSU_INSTALL_MAGIC2) {
