@@ -83,7 +83,7 @@ oplus_ufs_common_init(void)
 
 	printk("oplus_ufs_common_init");
 
-#ifdef CONFIG_TRACEPOINTS
+#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
 	rc = register_trace_android_vh_ufs_gen_proc_devinfo(ufs_gen_proc_devinfo_handle, NULL);
 	if (rc != 0)
 		pr_err("register_trace_android_vh_ufs_gen_proc_devinfo failed! rc=%d\n", rc);
