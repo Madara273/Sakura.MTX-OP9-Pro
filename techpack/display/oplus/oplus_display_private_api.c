@@ -151,14 +151,15 @@ bool is_dsi_panel(struct drm_crtc *crtc)
 {
 	struct dsi_display *display = get_current_display();
 
-	if (!display || !display->drm_conn || !display->drm_conn->state) {
-		pr_err("failed to find dsi display\n");
+	if (!display || !display->panel ||
+	    !display->drm_conn || !display->drm_conn->state) {
+		pr_debug("DSI display is not ready\n");
 		return false;
 	}
 
 	if (crtc != display->drm_conn->state->crtc) {
-		pr_err("failed to find dsi, panel name = %s display->panel->is_secondary = %d \n",
-		       display->panel->name, display->panel->is_secondary);
+		pr_debug("CRTC does not belong to DSI panel %s (secondary=%d)\n",
+			 display->panel->name, display->panel->is_secondary);
 		return false;
 	}
 
