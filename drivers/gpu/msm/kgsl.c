@@ -12,6 +12,7 @@
 #include <linux/dma-buf.h>
 #include <linux/fdtable.h>
 #include <linux/io.h>
+#include <linux/kgsl_gpu_mem.h>
 #include <linux/ion.h>
 #include <linux/mman.h>
 #include <linux/mm_types.h>
@@ -369,6 +370,85 @@ static void kgsl_destroy_anon(struct kgsl_memdesc *memdesc)
 	memdesc->sgt = NULL;
 }
 
+#if defined(CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK) && \
+	IS_BUILTIN(CONFIG_QCOM_KGSL) && !defined(CONFIG_BPF_EVENTS)
+static DEFINE_SPINLOCK(kgsl_gpu_mem_lock);
+static ATOMIC_NOTIFIER_HEAD(kgsl_gpu_mem_notifiers);
+static u64 kgsl_gpu_mem_total;
+
+static void kgsl_gpu_mem_notify(struct notifier_block *nb,
+			       struct kgsl_process_private *priv)
+{
+	struct kgsl_gpu_mem_event event = {
+		.total = kgsl_gpu_mem_total,
+	};
+	unsigned int type;
+
+	if (priv) {
+		event.pid = pid_nr(priv->pid);
+		for (type = 0; type < KGSL_MEM_ENTRY_MAX; type++)
+			event.size += atomic64_read(&priv->stats[type].cur);
+	}
+
+	if (nb)
+		nb->notifier_call(nb, 0, &event);
+	else
+		atomic_notifier_call_chain(&kgsl_gpu_mem_notifiers, 0, &event);
+}
+
+int kgsl_gpu_mem_register_notifier(struct notifier_block *nb)
+{
+	struct kgsl_process_private *priv;
+	unsigned long flags;
+	int ret;
+
+	/*
+	 * Serialize subscription and the initial snapshot with accounting
+	 * updates. Keep processes alive while reading their atomic counters.
+	 */
+	read_lock(&kgsl_driver.proclist_lock);
+	spin_lock_irqsave(&kgsl_gpu_mem_lock, flags);
+	ret = atomic_notifier_chain_register(&kgsl_gpu_mem_notifiers, nb);
+	if (!ret) {
+		kgsl_gpu_mem_notify(nb, NULL);
+		list_for_each_entry(priv, &kgsl_driver.process_list, list)
+			kgsl_gpu_mem_notify(nb, priv);
+	}
+	spin_unlock_irqrestore(&kgsl_gpu_mem_lock, flags);
+	read_unlock(&kgsl_driver.proclist_lock);
+
+	return ret;
+}
+
+void kgsl_gpu_mem_unregister_notifier(struct notifier_block *nb)
+{
+	atomic_notifier_chain_unregister(&kgsl_gpu_mem_notifiers, nb);
+}
+#endif
+
+static void kgsl_process_update_stats(struct kgsl_process_private *priv,
+				     unsigned int type, s64 delta)
+{
+	u64 size;
+#if defined(CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK) && \
+	IS_BUILTIN(CONFIG_QCOM_KGSL) && !defined(CONFIG_BPF_EVENTS)
+	unsigned long flags;
+
+	spin_lock_irqsave(&kgsl_gpu_mem_lock, flags);
+#endif
+	size = atomic64_add_return(delta, &priv->stats[type].cur);
+	if (delta > 0 && size > priv->stats[type].max)
+		priv->stats[type].max = size;
+
+#if defined(CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK) && \
+	IS_BUILTIN(CONFIG_QCOM_KGSL) && !defined(CONFIG_BPF_EVENTS)
+	kgsl_gpu_mem_total += delta;
+	if (rcu_access_pointer(kgsl_gpu_mem_notifiers.head))
+		kgsl_gpu_mem_notify(NULL, priv);
+	spin_unlock_irqrestore(&kgsl_gpu_mem_lock, flags);
+#endif
+}
+
 static void kgsl_process_sub_stats(struct kgsl_process_private *priv,
 	unsigned int type, uint64_t size)
 {
@@ -387,7 +467,7 @@ static void kgsl_process_sub_stats(struct kgsl_process_private *priv,
 		put_task_struct(task);
 	}
 #endif
-	atomic64_sub(size, &priv->stats[type].cur);
+	kgsl_process_update_stats(priv, type, -(s64)size);
 }
 
 void
@@ -2857,10 +2937,7 @@ static long _gpuobj_map_dma_buf(struct kgsl_device *device,
 static void kgsl_process_add_stats(struct kgsl_process_private *priv,
 	unsigned int type, uint64_t size)
 {
-	u64 ret = atomic64_add_return(size, &priv->stats[type].cur);
-
-	if (ret > priv->stats[type].max)
-		priv->stats[type].max = ret;
+	kgsl_process_update_stats(priv, type, size);
 
 #ifdef CONFIG_MM_STAT_UNRECLAIMABLE_PAGES
 	add_mm_counter(current->mm, MM_UNRECLAIMABLE, (size >> PAGE_SHIFT));

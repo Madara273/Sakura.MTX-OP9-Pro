@@ -1877,6 +1877,21 @@ config BPF_SYSCALL
 	  Enable the bpf() system call that allows to manipulate eBPF
 	  programs and maps via file descriptors.
 
+config BPF_ANDROID_GPU_MEM_FALLBACK
+	bool "Android GPU memory BPF compatibility"
+	depends on BPF_SYSCALL
+	default y
+	help
+	  Supply the gpuMem accounting map for Android ROMs that ship
+	  /system/etc/bpf/gpuMem.bpf but run without BPF tracing support.
+	  Initialize it after a root BPF loader pins an object in bpffs,
+	  using the loader's credentials and resource limits.
+
+	  Built-in KGSL supplies process GPU allocation and import totals.
+	  Other GPU drivers receive an empty compatibility map. Native ROM
+	  maps are preserved, and kernels supporting BPF tracing do not
+	  create a fallback. This option can remain enabled across ROMs.
+
 config ARCH_WANT_DEFAULT_BPF_JIT
 	bool
 

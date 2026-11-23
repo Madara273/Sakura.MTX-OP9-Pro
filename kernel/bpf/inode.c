@@ -20,6 +20,8 @@
 #include <linux/filter.h>
 #include <linux/bpf.h>
 #include <linux/bpf_trace.h>
+#include <linux/syscalls.h>
+#include <linux/user_namespace.h>
 #include "preload/bpf_preload.h"
 
 enum bpf_type {
@@ -434,12 +436,109 @@ static int bpf_iter_link_pin_kernel(struct dentry *parent,
 	return ret;
 }
 
+#ifdef CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK
+/*
+ * Android's BPF loader raises its memlock limit before pinning objects.
+ * Initialize the compatibility map here, after bpffs and its security labels
+ * are ready, instead of allocating it from the mount path.
+ */
+static int bpf_pin_android_gpu_mem_map(const struct path *path)
+{
+	static const char name[] = "map_gpuMem_gpu_mem_total_map";
+	struct dentry *root = path->dentry;
+	struct inode *dir = d_inode(root);
+	struct bpf_map *map;
+	struct dentry *dentry;
+	int fd, ret;
+
+	inode_lock(dir);
+	dentry = lookup_one_len(name, root, sizeof(name) - 1);
+	if (IS_ERR(dentry)) {
+		ret = PTR_ERR(dentry);
+		goto out_unlock;
+	}
+
+	/* A map or another object supplied by the ROM belongs to its loader. */
+	if (d_really_is_positive(dentry)) {
+		ret = 0;
+		goto out_dput;
+	}
+
+	fd = bpf_android_gpu_mem_map_create();
+	if (fd < 0) {
+		ret = fd;
+		goto out_dput;
+	}
+
+	map = bpf_map_get_with_uref(fd);
+	ksys_close(fd);
+	if (IS_ERR(map)) {
+		ret = PTR_ERR(map);
+		goto out_dput;
+	}
+
+	ret = bpf_android_gpu_mem_map_register(map);
+	if (!ret)
+		ret = security_path_mknod(path, dentry, S_IFREG | 0640, 0);
+	if (!ret)
+		ret = vfs_mkobj(dentry, 0640, bpf_mkmap, map);
+	if (ret)
+		bpf_map_put_with_uref(map);
+	else
+		d_inode(dentry)->i_gid = KGIDT_INIT(1003); /* AID_GRAPHICS */
+
+out_dput:
+	dput(dentry);
+out_unlock:
+	inode_unlock(dir);
+	return ret;
+}
+
+static void bpf_init_android_gpu_mem_map(const struct path *path)
+{
+	struct dentry *root = path->dentry;
+	struct path program;
+	int ret;
+
+	if (!root || IS_ENABLED(CONFIG_BPF_EVENTS))
+		return;
+
+	if (root->d_sb->s_user_ns != &init_user_ns ||
+	    !uid_eq(current_fsuid(), GLOBAL_ROOT_UID))
+		return;
+
+	/* ROMs without the GPU BPF program do not need the compatibility map. */
+	ret = kern_path("/system/etc/bpf/gpuMem.bpf", LOOKUP_FOLLOW, &program);
+	if (ret) {
+		if (ret != -ENOENT && ret != -ENOTDIR)
+			pr_warn_ratelimited("bpffs: cannot locate GPU BPF program: %d\n",
+					    ret);
+		return;
+	}
+	if (!S_ISREG(d_inode(program.dentry)->i_mode)) {
+		path_put(&program);
+		return;
+	}
+	path_put(&program);
+
+	ret = bpf_pin_android_gpu_mem_map(path);
+	if (ret)
+		pr_warn_ratelimited("bpffs: GPU memory map initialization failed: %d\n",
+				    ret);
+}
+#else
+static inline void bpf_init_android_gpu_mem_map(const struct path *path)
+{
+}
+#endif
+
 static int bpf_obj_do_pin(const char __user *pathname, void *raw,
 			  enum bpf_type type)
 {
 	struct dentry *dentry;
 	struct inode *dir;
 	struct path path;
+	struct path gpu_path = { };
 	umode_t mode;
 	int ret;
 
@@ -473,7 +572,16 @@ static int bpf_obj_do_pin(const char __user *pathname, void *raw,
 		ret = -EPERM;
 	}
 out:
+	if (IS_ENABLED(CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK) && !ret) {
+		gpu_path = path;
+		gpu_path.dentry = path.dentry->d_sb->s_root;
+		path_get(&gpu_path);
+	}
 	done_path_create(&path, dentry);
+
+	/* Release the original parent lock before locking the bpffs root. */
+	bpf_init_android_gpu_mem_map(&gpu_path);
+	path_put(&gpu_path);
 	return ret;
 }
 
@@ -752,6 +860,7 @@ out:
 			bpf_link_put(links[i]);
 	return err;
 }
+
 
 static int bpf_fill_super(struct super_block *sb, struct fs_context *fc)
 {

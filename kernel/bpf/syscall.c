@@ -2,6 +2,7 @@
 /* Copyright (c) 2011-2014 PLUMgrid, http://plumgrid.com
  */
 #include <linux/bpf.h>
+#include <linux/kgsl_gpu_mem.h>
 #include <linux/bpf_trace.h>
 #include <linux/bpf_lirc.h>
 #include <linux/bpf_verifier.h>
@@ -125,6 +126,9 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 		return map;
 	map->ops = ops;
 	map->map_type = type;
+#ifdef CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK
+	map->gpu_mem_registered = false;
+#endif
 	return map;
 }
 
@@ -475,6 +479,10 @@ static void bpf_map_free_deferred(struct work_struct *work)
 	struct bpf_map *map = container_of(work, struct bpf_map, work);
 	struct bpf_map_memory mem;
 
+#ifdef CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK
+	if (map->gpu_mem_registered)
+		kgsl_gpu_mem_unregister_notifier(&map->gpu_mem_notifier);
+#endif
 	bpf_map_charge_move(&mem, &map->memory);
 	security_bpf_map_free(map);
 	/* implementation dependent freeing */
@@ -909,6 +917,79 @@ free_map:
 	bpf_map_charge_finish(&mem);
 	return err;
 }
+
+#ifdef CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK
+static int bpf_android_gpu_mem_update(struct bpf_map *map, u64 key, u64 size)
+{
+	int ret;
+
+	if (size)
+		return map->ops->map_update_elem(map, &key, &size, BPF_ANY);
+
+	ret = map->ops->map_delete_elem(map, &key);
+	return ret == -ENOENT ? 0 : ret;
+}
+
+static int bpf_android_gpu_mem_notify(struct notifier_block *nb,
+				      unsigned long action, void *data)
+{
+	const struct kgsl_gpu_mem_event *event = data;
+	struct bpf_map *map = container_of(nb, struct bpf_map, gpu_mem_notifier);
+	int ret, total_ret;
+
+	/* GPU ID zero occupies the high 32 bits of each Android map key. */
+	bpf_disable_instrumentation();
+	rcu_read_lock();
+	ret = event->pid ?
+		bpf_android_gpu_mem_update(map, event->pid, event->size) : 0;
+	total_ret = bpf_android_gpu_mem_update(map, 0, event->total);
+	rcu_read_unlock();
+	bpf_enable_instrumentation();
+
+	if (ret || total_ret)
+		pr_warn_ratelimited("bpf: GPU memory accounting update failed: %d\n",
+				    ret ? ret : total_ret);
+	return NOTIFY_OK;
+}
+
+int bpf_android_gpu_mem_map_register(struct bpf_map *map)
+{
+	int ret;
+
+	map->gpu_mem_notifier.notifier_call = bpf_android_gpu_mem_notify;
+	ret = kgsl_gpu_mem_register_notifier(&map->gpu_mem_notifier);
+	if (!ret)
+		map->gpu_mem_registered = true;
+
+	/* Other GPU drivers can still use the boot compatibility map. */
+	return ret == -EOPNOTSUPP ? 0 : ret;
+}
+
+int bpf_android_gpu_mem_map_create(void)
+{
+	union bpf_attr attr = {
+		.map_type = BPF_MAP_TYPE_HASH,
+		.key_size = sizeof(u64),
+		.value_size = sizeof(u64),
+		.max_entries = 1024,
+		.map_name = "gpu_mem_total_m",
+	};
+	int err;
+
+	err = security_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
+	if (err) {
+		pr_warn_ratelimited("bpf: Android GPU map security check failed: %d\n",
+				    err);
+		return err;
+	}
+	err = map_create(&attr);
+	if (err < 0)
+		pr_warn_ratelimited("bpf: Android GPU map allocation failed: %d (memlock=%lu, charged_pages=%ld)\n",
+			err, rlimit(RLIMIT_MEMLOCK),
+			atomic_long_read(&current_user()->locked_vm));
+	return err;
+}
+#endif
 
 /* if error is returned, fd is released.
  * On success caller should complete fd access with matching fdput()

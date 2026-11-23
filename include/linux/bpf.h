@@ -17,6 +17,7 @@
 #include <linux/u64_stats_sync.h>
 #include <linux/refcount.h>
 #include <linux/mutex.h>
+#include <linux/notifier.h>
 #include <linux/module.h>
 #include <linux/kallsyms.h>
 #include <linux/capability.h>
@@ -178,6 +179,10 @@ struct bpf_map {
 	struct work_struct work;
 	struct mutex freeze_mutex;
 	atomic64_t writecnt;
+#ifdef CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK
+	struct notifier_block gpu_mem_notifier;
+	bool gpu_mem_registered;
+#endif
 };
 
 static inline bool map_value_has_spin_lock(const struct bpf_map *map)
@@ -1247,6 +1252,10 @@ void bpf_map_free_id(struct bpf_map *map, bool do_idr_lock);
 
 struct bpf_map *bpf_map_get(u32 ufd);
 struct bpf_map *bpf_map_get_with_uref(u32 ufd);
+#ifdef CONFIG_BPF_ANDROID_GPU_MEM_FALLBACK
+int bpf_android_gpu_mem_map_create(void);
+int bpf_android_gpu_mem_map_register(struct bpf_map *map);
+#endif
 struct bpf_map *__bpf_map_get(struct fd f);
 void bpf_map_inc(struct bpf_map *map);
 void bpf_map_inc_with_uref(struct bpf_map *map);
