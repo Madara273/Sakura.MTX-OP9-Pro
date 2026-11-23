@@ -1908,7 +1908,8 @@ static int syna_tcm_write_message(struct syna_tcm_data *tcm_info,
 
 		if (command_status != CMD_IDLE ||
 		    tcm_info->report_code == STATUS_ERROR) {
-			TPD_INFO("Failed to get valid response\n");
+			TPD_INFO("Invalid response: cmd=0x%02x status=0x%02x state=%d\n",
+				 tcm_info->command, tcm_info->report_code, command_status);
 			report = tp_kzalloc(30, GFP_KERNEL);
 			if (report) {
 				snprintf(report, 30, "write_msg_err_resp%2x", tcm_info->command);
@@ -2252,7 +2253,6 @@ static int syna_tcm_get_dynamic_config(struct syna_tcm_data *tcm_info,
 				       enum dynamic_config_id id, unsigned short *value)
 {
 	int retval = 0;
-	char *report = NULL;
 	unsigned char out_buf = (unsigned char)id;
 	unsigned char *resp_buf = NULL;
 	unsigned int resp_buf_size = 0, resp_length = 0;
@@ -2266,14 +2266,14 @@ static int syna_tcm_get_dynamic_config(struct syna_tcm_data *tcm_info,
 					&resp_length,
 					RESPONSE_TIMEOUT_MS_SHORT);
 
-	if (retval < 0 || resp_length < 2) {
-		retval = -EINVAL;
-		TPD_INFO("Failed to read dynamic config\n");
-		report = tp_kzalloc(30, GFP_KERNEL);
-		if (report) {
-			snprintf(report, 30, "get_dc_err_%2x", id);
-			tp_kfree((void **)&report);
-		}
+	if (retval < 0) {
+		TPD_INFO("Dynamic config 0x%02x read failed: %d\n", id, retval);
+		goto exit;
+	}
+	if (resp_length < 2 || !resp_buf) {
+		TPD_INFO("Dynamic config 0x%02x response too short: %u\n",
+			 id, resp_length);
+		retval = -EPROTO;
 		goto exit;
 	}
 
