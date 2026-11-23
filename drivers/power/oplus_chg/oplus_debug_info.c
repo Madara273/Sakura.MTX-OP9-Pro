@@ -1,5 +1,6 @@
 #include <linux/power_supply.h>
 #include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <linux/power_supply.h>
 #include <linux/of.h>
 #include <linux/slab.h>
@@ -210,7 +211,7 @@ struct oplus_chg_debug_info {
 
 	int notify_type;
 	unsigned long long notify_flag;
-	struct mutex nflag_lock; 
+	spinlock_t nflag_lock;
 
 	struct power_supply *usb_psy;
 	struct power_supply *batt_psy;
@@ -471,14 +472,15 @@ static int oplus_chg_pack_debug_info(struct oplus_chg_chip *chip)
 
 static int oplus_chg_debug_mask_notify_flag(int low, int high)
 {
+	unsigned long flags;
 	unsigned long long mask = -1;
 	int bits = sizeof(mask) * 8 - 1;
 
 	mask = (mask >> low) << low;
 	mask = (mask << (bits - high)) >> (bits - high);
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	oplus_chg_debug_info.notify_flag &= ~mask;
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return 0;
 }
@@ -927,59 +929,67 @@ static int oplus_chg_get_charge_power(struct oplus_chg_chip *chip)
 
 static int oplus_chg_reset_chg_cnt(int index)
 {
+	unsigned long flags;
+
 	if ((index < 0) && (index >= OPLUS_NOTIFY_CHG_MAX_CNT))
 		return -1;
 
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	oplus_chg_debug_info.chg_cnt[index] = 0;
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return 0;
 }
 
 static int oplus_chg_set_notify_type(int index)
 {
+	unsigned long flags;
+
 	if ((index < 0) || (index >= OPLUS_CHG_DEBUG_NOTIFY_TYPE_MAX))
 		return -1;
 
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	oplus_chg_debug_info.notify_type |= (1 << index);
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return 0;
 }
 
 static int oplus_chg_debug_notify_type_is_set(int type)
 {
+	unsigned long flags;
 	int ret = 0;
 
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	if (oplus_chg_debug_info.notify_type & (1 << type)) {
 		ret = 1;
 	}
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return ret;
 }
 
 static int oplus_chg_reset_chg_notify_type(void)
 {
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	oplus_chg_debug_info.notify_type = 0;
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return 0;
 }
 
 static int oplus_chg_set_chg_flag(int index)
 {
+	unsigned long flags;
 	int rc = 0;
 	int policy_time = 1;
 
 	if ((index < 0) || (index >= OPLUS_NOTIFY_CHG_MAX_CNT))
 		return -1;
 
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	oplus_chg_debug_info.chg_cnt[index]++;
 
 	if ((oplus_chg_debug_info.fast_chg_type == FASTCHG_CHARGER_TYPE_UNKOWN)
@@ -1027,7 +1037,7 @@ static int oplus_chg_set_chg_flag(int index)
 	chg_err("cnt: %d, index: %d, flag: 0x%x\n",
 			oplus_chg_debug_info.chg_cnt[index], index, oplus_chg_debug_info.notify_flag);
 #endif
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return rc;
 }
@@ -1969,15 +1979,16 @@ int oplus_chg_debug_chg_monitor(struct oplus_chg_chip *chip)
 #if 0
 static unsigned long long oplus_chg_debug_get_notify_flag(bool reset)
 {
+	unsigned long flags;
 	unsigned long long flag = 0;
 
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	flag = oplus_chg_debug_info.notify_flag;
 	if (reset)
 	{
 		oplus_chg_debug_info.notify_flag = 0;
 	}
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return flag;
 }
@@ -1985,22 +1996,25 @@ static unsigned long long oplus_chg_debug_get_notify_flag(bool reset)
 
 static int oplus_chg_debug_notify_flag_is_set(int flag)
 {
+	unsigned long flags;
 	int ret = 0;
 
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	if (oplus_chg_debug_info.notify_flag & (1 << flag)) {
 		ret = 1;
 	}
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return ret;
 
 }
 static int oplus_chg_debug_reset_notify_flag(void)
 {
-	mutex_lock(&oplus_chg_debug_info.nflag_lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&oplus_chg_debug_info.nflag_lock, flags);
 	oplus_chg_debug_info.notify_flag = 0;
-	mutex_unlock(&oplus_chg_debug_info.nflag_lock);
+	spin_unlock_irqrestore(&oplus_chg_debug_info.nflag_lock, flags);
 
 	return 0;
 }
@@ -2216,7 +2230,7 @@ int oplus_chg_debug_info_init(void)
 	memset(&oplus_chg_debug_info, 0x0, sizeof(oplus_chg_debug_info));
 	memset(&oplus_chg_debug_msg[0], 0x0, sizeof(oplus_chg_debug_msg));
 
-	mutex_init(&oplus_chg_debug_info.nflag_lock);
+	spin_lock_init(&oplus_chg_debug_info.nflag_lock);
 	oplus_chg_debug_info_reset();
 
 	oplus_chg_debug_info.pre_led_state = 1;
