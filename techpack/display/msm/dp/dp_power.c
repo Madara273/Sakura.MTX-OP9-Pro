@@ -233,20 +233,28 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 			}
 		}
 
-		power->link_clk_rcg = clk_get(dev, "link_clk_src");
+		power->link_clk_rcg = clk_get_optional(dev, "link_clk_src");
 		if (IS_ERR(power->link_clk_rcg)) {
-			DP_ERR("Unable to get DP link clk RCG: %ld\n",
-					PTR_ERR(power->link_clk_rcg));
-			rc = 0;
+			rc = PTR_ERR(power->link_clk_rcg);
 			power->link_clk_rcg = NULL;
+			if (rc != -EPROBE_DEFER)
+				DP_ERR("Unable to get DP link clk RCG: %d\n", rc);
+			goto err_link_clk_rcg;
 		}
 
-		power->link_parent = clk_get(dev, "link_parent");
+		power->link_parent = clk_get_optional(dev, "link_parent");
 		if (IS_ERR(power->link_parent)) {
-			DP_ERR("Unable to get DP link parent: %ld\n",
-					PTR_ERR(power->link_parent));
-			rc = 0;
+			rc = PTR_ERR(power->link_parent);
 			power->link_parent = NULL;
+			if (rc != -EPROBE_DEFER)
+				DP_ERR("Unable to get DP link parent: %d\n", rc);
+			goto err_link_parent;
+		}
+
+		if (!!power->link_clk_rcg != !!power->link_parent) {
+			DP_ERR("DP link clock and parent must be provided together\n");
+			rc = -EINVAL;
+			goto err_link_pair;
 		}
 	} else {
 		if (power->pixel1_clk_rcg)
@@ -269,10 +277,21 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 
 	return rc;
 
+err_link_pair:
+	clk_put(power->link_parent);
+	power->link_parent = NULL;
+err_link_parent:
+	clk_put(power->link_clk_rcg);
+	power->link_clk_rcg = NULL;
+err_link_clk_rcg:
+	clk_put(power->pixel1_clk_rcg);
+	power->pixel1_clk_rcg = NULL;
 err_pixel1_clk_rcg:
 	clk_put(power->pixel_parent);
+	power->pixel_parent = NULL;
 err_pixel_parent:
 	clk_put(power->pixel_clk_rcg);
+	power->pixel_clk_rcg = NULL;
 err_pixel_clk_rcg:
 	dp_power_clk_put(power);
 exit:
@@ -374,7 +393,8 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 		}
 	}
 
-	if (pm_type == DP_LINK_PM && enable && power->link_parent) {
+	if (pm_type == DP_LINK_PM && enable &&
+	    power->link_clk_rcg && power->link_parent) {
 		rc = clk_set_parent(power->link_clk_rcg, power->link_parent);
 		if (rc) {
 			DP_ERR("failed to set link parent\n");
