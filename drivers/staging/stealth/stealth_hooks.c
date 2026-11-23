@@ -3,6 +3,7 @@
 #include <linux/icmp.h>
 #include <linux/icmpv6.h>
 #include <linux/if.h>
+#include <linux/workqueue.h>
 
 static bool ghost_is_tracked_reply(const struct sk_buff *skb)
 {
@@ -215,24 +216,133 @@ static bool inspect_tls_sni(struct sk_buff *skb, int trans_off, int tot_len,
 	return parse_tls_sni(skb, payload_off, payload_len, domain, dom_len) == 0;
 }
 
-static bool inspect_quic_sni(struct sk_buff *skb, int trans_off,
-	char *domain, int dom_len)
-{
-	struct udphdr _udph, *udph;
-	int udp_len = sizeof(*udph);
-	int payload_off, payload_len, udp_total_len;
+#define MAX_PENDING_QUIC_INSPECTIONS 128
 
-	udph = skb_header_pointer(skb, trans_off, udp_len, &_udph);
-	if (unlikely(!udph || udph->dest != htons(HTTPS_PORT)))
-		return false;
-	udp_total_len = ntohs(udph->len);
-	if (unlikely(udp_total_len < udp_len))
-		return false;
-	payload_off = trans_off + udp_len;
-	payload_len = udp_total_len - udp_len;
-	if (unlikely(payload_len < 64 || payload_off > skb->len || payload_len > skb->len - payload_off))
-		return false;
-	return parse_quic_sni(skb, payload_off, payload_len, domain, dom_len) == 0;
+struct stealth_quic_work {
+	struct work_struct work;
+	struct sk_buff *payload;
+	struct net *net;
+	uid_t uid;
+	int ifindex;
+	bool is_ipv6;
+	union {
+		__be32 v4;
+		struct in6_addr v6;
+	} remote;
+};
+
+static struct workqueue_struct *quic_inspection_wq;
+static atomic_t pending_quic_inspections = ATOMIC_INIT(0);
+
+static void report_app_hostname(struct net *net, int ifindex, uid_t uid,
+				bool is_ipv6, const void *remote_ip,
+				const char *domain)
+{
+	struct stealth_rule_match match;
+	char host_event[MAX_DOMAIN_WIRE_LEN + 16];
+	bool is_block;
+
+	if (ifindex)
+		stealth_neigh_set_hostname(net, ifindex, is_ipv6 ? 6 : 4,
+					   remote_ip, domain);
+	if (!lookup_rule(domain, uid, &match))
+		return;
+
+	is_block = match.action == ACTION_BLOCK || match.action == ACTION_DROP;
+	snprintf(host_event, sizeof(host_event), "%s:%s",
+		 is_block ? "BYPASS" : "HOST", domain);
+	push_event(uid, match.action, is_ipv6 ? 6 : 4, host_event);
+}
+
+static void inspect_quic_work(struct work_struct *work)
+{
+	struct stealth_quic_work *job =
+		container_of(work, struct stealth_quic_work, work);
+	char domain[MAX_DOMAIN_WIRE_LEN + 1];
+	const void *remote_ip = job->is_ipv6 ?
+		(const void *)&job->remote.v6 : (const void *)&job->remote.v4;
+
+	if (!parse_quic_sni(job->payload, 0, job->payload->len,
+			    domain, sizeof(domain)))
+		report_app_hostname(job->net, job->ifindex, job->uid,
+				    job->is_ipv6, remote_ip, domain);
+
+	put_net(job->net);
+	kfree_skb(job->payload);
+	kfree(job);
+	atomic_dec(&pending_quic_inspections);
+}
+
+static void queue_quic_inspection(const struct sk_buff *skb,
+				  const struct nf_hook_state *state,
+				  int trans_off, uid_t uid, bool is_ipv6,
+				  const void *remote_ip)
+{
+	struct stealth_quic_work *job;
+	struct udphdr header;
+	const struct udphdr *udp;
+	u8 initial[5];
+	int offset, len;
+
+	udp = skb_header_pointer(skb, trans_off, sizeof(header), &header);
+	if (!udp || udp->dest != htons(HTTPS_PORT))
+		return;
+	offset = trans_off + sizeof(header);
+	len = ntohs(udp->len) - (int)sizeof(header);
+	if (len < 64 || offset > skb->len || len > skb->len - offset)
+		return;
+	if (skb_copy_bits(skb, offset, initial, sizeof(initial)) ||
+	    (initial[0] & 0xb0) != 0x80 ||
+	    initial[1] || initial[2] || initial[3] || initial[4] != 1)
+		return;
+
+	if (atomic_inc_return(&pending_quic_inspections) >
+	    MAX_PENDING_QUIC_INSPECTIONS)
+		goto out_count;
+
+	job = kzalloc(sizeof(*job), GFP_ATOMIC);
+	if (!job)
+		goto out_count;
+	len = min(len, 1500);
+	job->payload = alloc_skb(len, GFP_ATOMIC);
+	if (!job->payload)
+		goto out_free;
+	if (skb_copy_bits(skb, offset, skb_put(job->payload, len), len))
+		goto out_payload;
+
+	job->net = get_net(state->net);
+	job->uid = uid;
+	job->ifindex = state->out ? state->out->ifindex : 0;
+	job->is_ipv6 = is_ipv6;
+	if (is_ipv6)
+		job->remote.v6 = *(const struct in6_addr *)remote_ip;
+	else
+		job->remote.v4 = *(const __be32 *)remote_ip;
+	INIT_WORK(&job->work, inspect_quic_work);
+	if (queue_work(quic_inspection_wq, &job->work))
+		return;
+
+	put_net(job->net);
+out_payload:
+	kfree_skb(job->payload);
+out_free:
+	kfree(job);
+out_count:
+	atomic_dec(&pending_quic_inspections);
+}
+
+int stealth_inspection_init(void)
+{
+	quic_inspection_wq = alloc_ordered_workqueue("stealth_quic", 0);
+	return quic_inspection_wq ? 0 : -ENOMEM;
+}
+
+void stealth_inspection_cleanup(void)
+{
+	if (quic_inspection_wq) {
+		destroy_workqueue(quic_inspection_wq);
+		quic_inspection_wq = NULL;
+	}
 }
 
 static void inspect_app_traffic(struct sk_buff *skb, const struct nf_hook_state *state,
@@ -240,39 +350,21 @@ static void inspect_app_traffic(struct sk_buff *skb, const struct nf_hook_state 
 	const void *remote_ip)
 {
 	struct sock *sk;
-	struct stealth_rule_match match;
-	uid_t uid = 0;
-	char domain_buf[MAX_DOMAIN_WIRE_LEN + 1];
-	char host_event[MAX_DOMAIN_WIRE_LEN + 16];
-	int dom_len = sizeof(domain_buf);
-	int host_len = sizeof(host_event);
-	bool found = false;
-	bool is_block;
+	uid_t uid;
+	char domain[MAX_DOMAIN_WIRE_LEN + 1];
 
 	sk = skb_to_full_sk(skb);
 	if (!sk || !sk_fullsock(sk))
 		return;
 	uid = from_kuid_munged(&init_user_ns, sock_net_uid(state->net, sk));
-	if (protocol == IPPROTO_TCP)
-		found = inspect_tls_sni(skb, trans_off, tot_len, domain_buf, dom_len);
-	if (protocol == IPPROTO_UDP)
-		found = inspect_quic_sni(skb, trans_off, domain_buf, dom_len);
-	if (!found)
-		return;
-	if (state->out)
-		stealth_neigh_set_hostname(state->net, state->out->ifindex,
-					   is_ipv6 ? 6 : 4, remote_ip,
-					   domain_buf);
-	if (!lookup_rule(domain_buf, uid, &match))
-		return;
-	is_block = match.action == ACTION_BLOCK || match.action == ACTION_DROP;
-	if (is_block) {
-		snprintf(host_event, host_len, "BYPASS:%s", domain_buf);
-		push_event(uid, match.action, is_ipv6 ? 6 : 4, host_event);
+	if (protocol == IPPROTO_UDP) {
+		queue_quic_inspection(skb, state, trans_off, uid, is_ipv6, remote_ip);
 		return;
 	}
-	snprintf(host_event, host_len, "HOST:%s", domain_buf);
-	push_event(uid, match.action, is_ipv6 ? 6 : 4, host_event);
+	if (protocol == IPPROTO_TCP &&
+	    inspect_tls_sni(skb, trans_off, tot_len, domain, sizeof(domain)))
+		report_app_hostname(state->net, state->out ? state->out->ifindex : 0,
+				    uid, is_ipv6, remote_ip, domain);
 }
 
 static unsigned int hook_dns_ipv4(void *priv, struct sk_buff *skb,

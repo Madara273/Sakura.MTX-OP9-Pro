@@ -17,6 +17,7 @@
 #include <linux/hashtable.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/mutex.h>
 #include <linux/jhash.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -156,7 +157,8 @@ struct stealth_crypto_ctx {
 	struct crypto_shash *hmac_tfm;
 	struct crypto_sync_skcipher *hp_tfm;
 	struct crypto_aead *aead_tfm;
-	spinlock_t lock;
+	/* Serializes shared transforms during process-context QUIC analysis. */
+	struct mutex lock;
 };
 
 extern struct stealth_crypto_ctx quic_crypto_ctx;
@@ -196,9 +198,12 @@ void audit_all_set(bool enabled);
 const char *action_to_str(enum rule_action act);
 
 /* Parsers & Crypto API */
+int stealth_inspection_init(void);
+void stealth_inspection_cleanup(void);
 int stealth_crypto_init(void);
 void stealth_crypto_cleanup(void);
 int parse_tls_sni(const struct sk_buff *skb, int offset, int avail_len, char *out_sni, int max_len);
+/* Requires process context: key setup can allocate and wait. */
 int parse_quic_sni(const struct sk_buff *skb, int offset, int avail_len, char *out_sni, int max_sni_len);
 int parse_qname_strict(const struct sk_buff *skb, int offset, int avail_len, char *out_domain, int out_len, uint16_t *qtype, uint16_t *qclass);
 

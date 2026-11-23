@@ -9,7 +9,7 @@
 struct stealth_crypto_ctx quic_crypto_ctx;
 
 static DEFINE_HASHTABLE(quic_flow_table, QUIC_FLOW_HASH_BITS);
-static DEFINE_SPINLOCK(flow_table_lock);
+static DEFINE_MUTEX(flow_table_lock);
 static atomic_t active_flows_count = ATOMIC_INIT(0);
 
 static const u8 quic_v1_salt[20] = {
@@ -159,7 +159,7 @@ static struct quic_flow_entry *get_or_create_flow(const u8 *dcid, u8 dcil)
 	if (dcil == 0 || dcil > 20)
 		return NULL;
 	hash = jhash(dcid, dcil, 0);
-	spin_lock_bh(&flow_table_lock);
+	mutex_lock(&flow_table_lock);
 	cleanup_expired_flows_locked();
 	hash_for_each_possible(quic_flow_table, flow, hnode, hash) {
 		if (flow->dcil != dcil || memcmp(flow->dcid, dcid, dcil) != 0)
@@ -170,16 +170,16 @@ static struct quic_flow_entry *get_or_create_flow(const u8 *dcid, u8 dcil)
 		flow->last_seen = jiffies;
 		spin_unlock(&flow->lock);
 
-		spin_unlock_bh(&flow_table_lock);
+		mutex_unlock(&flow_table_lock);
 		return flow;
 	}
 	if (atomic_read(&active_flows_count) >= MAX_QUIC_FLOWS) {
-		spin_unlock_bh(&flow_table_lock);
+		mutex_unlock(&flow_table_lock);
 		return NULL;
 	}
-	flow = kzalloc(entry_sz, GFP_ATOMIC);
+	flow = kzalloc(entry_sz, GFP_KERNEL);
 	if (!flow) {
-		spin_unlock_bh(&flow_table_lock);
+		mutex_unlock(&flow_table_lock);
 		return NULL;
 	}
 	memcpy(flow->dcid, dcid, dcil);
@@ -193,19 +193,19 @@ static struct quic_flow_entry *get_or_create_flow(const u8 *dcid, u8 dcil)
 	refcount_set(&flow->refcnt, 2);
 	if (init_flow_crypto_keys(flow) != 0) {
 		kfree(flow);
-		spin_unlock_bh(&flow_table_lock);
+		mutex_unlock(&flow_table_lock);
 		return NULL;
 	}
 	hash_add(quic_flow_table, &flow->hnode, hash);
 	atomic_inc(&active_flows_count);
-	spin_unlock_bh(&flow_table_lock);
+	mutex_unlock(&flow_table_lock);
 	return flow;
 }
 
 int stealth_crypto_init(void)
 {
 	hash_init(quic_flow_table);
-	spin_lock_init(&quic_crypto_ctx.lock);
+	mutex_init(&quic_crypto_ctx.lock);
 	quic_crypto_ctx.hmac_tfm = crypto_alloc_shash("hmac(sha256)", 0, 0);
 	if (IS_ERR(quic_crypto_ctx.hmac_tfm))
 		return PTR_ERR(quic_crypto_ctx.hmac_tfm);
@@ -230,12 +230,12 @@ void stealth_crypto_cleanup(void)
 	struct hlist_node *tmp;
 	int bkt;
 
-	spin_lock_bh(&flow_table_lock);
+	mutex_lock(&flow_table_lock);
 	hash_for_each_safe(quic_flow_table, bkt, tmp, flow, hnode) {
 		hash_del(&flow->hnode);
 		flow_put(flow);
 	}
-	spin_unlock_bh(&flow_table_lock);
+	mutex_unlock(&flow_table_lock);
 	if (quic_crypto_ctx.aead_tfm && !IS_ERR(quic_crypto_ctx.aead_tfm))
 		crypto_free_aead(quic_crypto_ctx.aead_tfm);
 	if (quic_crypto_ctx.hp_tfm && !IS_ERR(quic_crypto_ctx.hp_tfm))
@@ -604,6 +604,8 @@ int parse_quic_sni(const struct sk_buff *skb, int offset, int avail_len,
 	int ret = -EINVAL, sni_ret, i;
 	u8 first_byte, dcil, scil, pn_len;
 
+	might_sleep();
+
 	if (!skb || !out_sni || max_sni_len <= 1 || avail_len <= 0)
 		return -EINVAL;
 	data = skb_header_pointer(skb, offset, len, packet_buf);
@@ -663,20 +665,20 @@ int parse_quic_sni(const struct sk_buff *skb, int offset, int avail_len,
 	memcpy(sample, packet_buf + pn_off + 4, 16);
 	sg_init_one(&sg_hp, sample, 16);
 
-	hp_req = skcipher_request_alloc(&quic_crypto_ctx.hp_tfm->base, GFP_ATOMIC);
+	hp_req = skcipher_request_alloc(&quic_crypto_ctx.hp_tfm->base, GFP_KERNEL);
 	if (!hp_req) {
 		ret = -ENOMEM;
 		goto out_put_flow;
 	}
-	spin_lock_bh(&quic_crypto_ctx.lock);
+	mutex_lock(&quic_crypto_ctx.lock);
 	ret = crypto_sync_skcipher_setkey(quic_crypto_ctx.hp_tfm, flow->hp_key, 16);
 	if (ret) {
-		spin_unlock_bh(&quic_crypto_ctx.lock);
+		mutex_unlock(&quic_crypto_ctx.lock);
 		goto out_free_hp;
 	}
 	skcipher_request_set_crypt(hp_req, &sg_hp, &sg_hp, 16, NULL);
 	ret = crypto_skcipher_encrypt(hp_req);
-	spin_unlock_bh(&quic_crypto_ctx.lock);
+	mutex_unlock(&quic_crypto_ctx.lock);
 	if (ret)
 		goto out_free_hp;
 	memcpy(mask, sample, 16);
@@ -708,26 +710,26 @@ int parse_quic_sni(const struct sk_buff *skb, int offset, int avail_len,
 	memcpy(crypt_buf, packet_buf, header_len);
 	memcpy(crypt_buf + header_len, packet_buf + header_len, cipher_len);
 	sg_init_one(&sg_aead, crypt_buf, total_aead_len);
-	aead_req = aead_request_alloc(quic_crypto_ctx.aead_tfm, GFP_ATOMIC);
+	aead_req = aead_request_alloc(quic_crypto_ctx.aead_tfm, GFP_KERNEL);
 	if (!aead_req) {
 		ret = -ENOMEM;
 		goto out_free_hp;
 	}
-	spin_lock_bh(&quic_crypto_ctx.lock);
+	mutex_lock(&quic_crypto_ctx.lock);
 	ret = crypto_aead_setkey(quic_crypto_ctx.aead_tfm, flow->key, 16);
 	if (ret) {
-		spin_unlock_bh(&quic_crypto_ctx.lock);
+		mutex_unlock(&quic_crypto_ctx.lock);
 		goto out_free_aead;
 	}
 	ret = crypto_aead_setauthsize(quic_crypto_ctx.aead_tfm, 16);
 	if (ret) {
-		spin_unlock_bh(&quic_crypto_ctx.lock);
+		mutex_unlock(&quic_crypto_ctx.lock);
 		goto out_free_aead;
 	}
 	aead_request_set_ad(aead_req, header_len);
 	aead_request_set_crypt(aead_req, &sg_aead, &sg_aead, cipher_len, iv);
 	ret = crypto_aead_decrypt(aead_req);
-	spin_unlock_bh(&quic_crypto_ctx.lock);
+	mutex_unlock(&quic_crypto_ctx.lock);
 	if (ret)
 		goto out_free_aead;
 	spin_lock_bh(&flow->lock);

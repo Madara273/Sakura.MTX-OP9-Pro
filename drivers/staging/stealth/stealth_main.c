@@ -29,6 +29,9 @@ static int __init stealth_net_init(void)
 		pr_err("[%s] Failed to initialize crypto engine: %d\n", TAG, ret);
 		goto err_crypto;
 	}
+	ret = stealth_inspection_init();
+	if (ret)
+		goto err_inspection;
 	ret = stealth_proc_init();
 	if (unlikely(ret))
 		goto err_proc;
@@ -57,6 +60,7 @@ static int __init stealth_net_init(void)
 	return 0;
 
 err_pernet:
+	stealth_inspection_cleanup();
 	stealth_tunnel_cleanup();
 err_tunnel:
 	stealth_ids_cleanup();
@@ -71,6 +75,8 @@ err_neigh:
 err_sysfs:
 	stealth_proc_cleanup();
 err_proc:
+	stealth_inspection_cleanup();
+err_inspection:
 	stealth_crypto_cleanup();
 err_crypto:
 	rules_table_cleanup();
@@ -80,6 +86,7 @@ err_crypto:
 static void __exit stealth_net_exit(void)
 {
 	unregister_pernet_subsys(&stealth_net_ops);
+	stealth_inspection_cleanup();
 	stealth_tunnel_cleanup();
 	stealth_ids_cleanup();
 	stealth_capture_cleanup();
