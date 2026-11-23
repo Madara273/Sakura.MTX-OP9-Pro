@@ -456,41 +456,42 @@ static int sde_power_mnoc_bus_parse(struct platform_device *pdev,
 	return rc;
 }
 
+static u64 sde_power_read_ib_vote(struct device_node *node, const char *name)
+{
+	u32 value;
+	int ret;
+
+	if (!of_find_property(node, name, NULL)) {
+		pr_debug("%s absent, using default IB vote\n", name);
+		return SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA;
+	}
+
+	ret = of_property_read_u32(node, name, &value);
+	if (ret) {
+		pr_err("invalid %s: %d, using default IB vote\n", name, ret);
+		return SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA;
+	}
+
+	return (u64)value * 1000;
+}
+
 static void sde_power_parse_ib_votes(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {
-	int rc = 0;
-	u32 tmp = 0;
+	struct device_node *node;
 
 	if (!pdev || !phandle) {
-		pr_err("invalid input param pdev:%pK phandle:%pK\n", pdev,
-						phandle);
+		pr_err("invalid input param pdev:%pK phandle:%pK\n", pdev, phandle);
 		return;
 	}
 
-	rc = of_property_read_u32(pdev->dev.of_node,
-			"qcom,sde-min-core-ib-kbps", &tmp);
-	if (rc)
-		pr_err("error reading min core ib vote. rc=%d, np=%x\n", rc, pdev->dev.of_node);
-
-	phandle->ib_quota[SDE_POWER_HANDLE_DBUS_ID_MNOC] = (!rc ? tmp*1000 :
-							SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
-
-	rc = of_property_read_u32(pdev->dev.of_node,
-			"qcom,sde-min-llcc-ib-kbps", &tmp);
-	if (rc)
-		pr_err("error reading min llcc ib vote. rc=%d\n", rc);
-
-	phandle->ib_quota[SDE_POWER_HANDLE_DBUS_ID_LLCC] = (!rc ? tmp*1000 :
-							SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
-
-	rc = of_property_read_u32(pdev->dev.of_node,
-			"qcom,sde-min-dram-ib-kbps", &tmp);
-	if (rc)
-		pr_err("error reading min dram ib vote. rc=%d\n", rc);
-
-	phandle->ib_quota[SDE_POWER_HANDLE_DBUS_ID_EBI] = (!rc ? tmp*1000 :
-							SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
+	node = pdev->dev.of_node;
+	phandle->ib_quota[SDE_POWER_HANDLE_DBUS_ID_MNOC] =
+		sde_power_read_ib_vote(node, "qcom,sde-min-core-ib-kbps");
+	phandle->ib_quota[SDE_POWER_HANDLE_DBUS_ID_LLCC] =
+		sde_power_read_ib_vote(node, "qcom,sde-min-llcc-ib-kbps");
+	phandle->ib_quota[SDE_POWER_HANDLE_DBUS_ID_EBI] =
+		sde_power_read_ib_vote(node, "qcom,sde-min-dram-ib-kbps");
 }
 
 static int sde_power_bus_parse(struct platform_device *pdev,
